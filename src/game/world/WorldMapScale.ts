@@ -9,8 +9,8 @@
  *
  * WORLD_SCALE = 2 → 4344 × 1448 world pixels.
  * Rationale: player visual footprint ≈ 44×68 (CHAR×2); at 2× source
- * pixels, default closer zoom (~1.35) stays sharp without making the
- * east–west crossing (≈17s at PLAYER_SPEED 252) feel endless.
+ * pixels, default zoom (0.85) keeps the plaza readable on mobile and
+ * desktop without the previous 130% close-up crop.
  */
 
 export const WORLD_IMAGE_WIDTH = 2172;
@@ -58,12 +58,7 @@ export function worldToImageY(y: number): number {
   return (y - WORLD_OFFSET_Y) / WORLD_SCALE_Y;
 }
 
-/**
- * Phase 10B camera baseline — immersive without ugly upscale blur.
- * Candidates tested conceptually: 1.20 / 1.25 / 1.30 / 1.35 → keep 1.30.
- * Practical zoom band tightened vs Phase 10A (was 0.55–2.20).
- */
-export const CAMERA_ZOOM_DEFAULT = 1.30;
+export const CAMERA_ZOOM_DEFAULT = 0.85;
 export const CAMERA_ZOOM_MIN = 0.85;
 export const CAMERA_ZOOM_MAX = 1.70;
 export const CAMERA_FOLLOW_LERP = 0.22;

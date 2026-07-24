@@ -23,7 +23,7 @@ import {
   LIVING_CITY_EVENT_MAX_GAP,
 } from '../game/systems/LivingCityEvents';
 import { getDistrictDialogueLines } from '../game/world/NpcDistrictDialogue';
-import { createCityChannel, removeCityChannel, type PresencePayload } from '../lib/presence';
+import { createCityChannel, removeCityChannel, flattenPresenceState, syncRealtimeAuth, type PresencePayload } from '../lib/presence';
 import { SocialPlayerCard } from './SocialPlayerCard';
 import { DirectMessagePanel } from './DirectMessagePanel';
 import { SocialHubPanel } from './social/SocialHubPanel';
@@ -748,6 +748,10 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
   const presenceIdRef = useRef<string>(
     userId ?? `guest_${Math.random().toString(36).slice(2, 10)}`
   );
+
+  useEffect(() => {
+    if (userId) presenceIdRef.current = userId;
+  }, [userId]);
   /* Latest-value refs for the presence broadcast closure — avoids stale
      state captures inside the 150ms setInterval. */
   const repRef        = useRef(initialRep ?? 0);
@@ -2533,8 +2537,9 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     const connect = () => {
       if (disposed) return;
       teardownChannel();
+      syncRealtimeAuth();
 
-      const ch = createCityChannel();
+      const ch = createCityChannel(presenceIdRef.current);
       if (!ch) { setConnState('offline'); return; }
       channel = ch;
       cityChannelRef.current = ch;
@@ -2593,7 +2598,9 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         })
         .on('presence', { event: 'sync' }, () => {
           const state = ch.presenceState<PresencePayload>();
-          const all: PresencePayload[] = Object.values(state).flat() as PresencePayload[];
+          const all = flattenPresenceState(
+            state as Record<string, PresencePayload[] | undefined>,
+          ).filter((p) => !p.id.startsWith('observer_'));
           setOnlineCount(all.length);
           const remotes = all.filter(p => p.id !== presenceIdRef.current);
           setOnlinePlayers(remotes);
@@ -3276,40 +3283,34 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                   </span>
                 </div>
 
-                {/* Active mission banner (Phase 5) */}
-                {missionState.completed ? (
-                  <div className="mission-active mission-active--done">
-                    <span className="mission-active__label">All missions complete</span>
-                    <span className="mission-active__title">Nice work, degen 🎉</span>
-                  </div>
-                ) : missionState.activeMissionTitle && (
-                  <div className="mission-active">
-                    <span className="mission-active__label">Active mission</span>
-                    <span className="mission-active__title">{missionState.activeMissionTitle}</span>
-                    {missionState.activeMissionDescription && <span className="mission-row__desc">{missionState.activeMissionDescription}</span>}
-                  </div>
-                )}
+                <div className="mission-card__scroll" data-ui-block-camera>
+                  {missionState.completed ? (
+                    <div className="mission-active mission-active--done">
+                      <span className="mission-active__label">All missions complete</span>
+                      <span className="mission-active__title">Nice work, degen 🎉</span>
+                    </div>
+                  ) : null}
 
-                <div className="mission-card__list" data-ui-block-camera>
-                  {missionState.missions.map(mission => {
-                    const isActive = !mission.completed && mission.id === missionState.activeMissionId;
-                    return (
-                      <div
-                        key={mission.id}
-                        className={`mission-row${mission.completed ? ' mission-row--done' : ''}${isActive ? ' mission-row--active' : ''}`}
-                      >
-                        <span className="mission-row__check" aria-hidden>{mission.completed ? '✓' : '○'}</span>
-                        <div className="mission-row__body">
-                          <span className="mission-row__title">{mission.title}</span>
-                          {/* Descriptions only on the active row — keeps the full 10-mission list scannable */}
-                          {isActive && (
-                            <span className="mission-row__desc">{mission.description}</span>
-                          )}
+                  <div className="mission-card__list">
+                    {missionState.missions.map(mission => {
+                      const isActive = !mission.completed && mission.id === missionState.activeMissionId;
+                      return (
+                        <div
+                          key={mission.id}
+                          className={`mission-row${mission.completed ? ' mission-row--done' : ''}${isActive ? ' mission-row--active' : ''}`}
+                        >
+                          <span className="mission-row__check" aria-hidden>{mission.completed ? '✓' : '○'}</span>
+                          <div className="mission-row__body">
+                            <span className="mission-row__title">{mission.title}</span>
+                            {isActive && (
+                              <span className="mission-row__desc">{mission.description}</span>
+                            )}
+                          </div>
+                          <span className="mission-row__reward">+{mission.rewardXp} XP<br />+{mission.rewardRep} REP</span>
                         </div>
-                        <span className="mission-row__reward">+{mission.rewardXp} XP<br />+{mission.rewardRep} REP</span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -4334,9 +4335,11 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
               role="status"
               data-ui-block-camera
             >
-              <span className="zone-prompt__key">E</span>
+              {!isMobile && <span className="zone-prompt__key">E</span>}
               <span className="zone-prompt__text">
-                {interiorPrompt
+                {isMobile && activeInteract?.mobileLabel
+                  ? activeInteract.mobileLabel
+                  : interiorPrompt
                   ? `Press E to ${interiorPrompt.kind === 'exit' ? 'leave' : 'inspect'} — ${interiorPrompt.label}`
                   : (activeInteract?.id === 'fountain' && !fountainClaimed)
                     ? 'Press E to Gather — Spring Water'

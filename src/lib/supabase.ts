@@ -213,5 +213,17 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         persistSession: true,
         autoRefreshToken: true,
       },
+      realtime: {
+        params: { eventsPerSecond: 12 },
+      },
     })
   : null;
+
+// Keep Realtime JWT aligned with auth so signed-in presence keys match track().
+if (supabase) {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.access_token) {
+      void supabase.realtime.setAuth(session.access_token);
+    }
+  });
+}

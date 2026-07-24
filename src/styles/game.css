@@ -352,7 +352,19 @@
   max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(200, 144, 42, 0.5) rgba(0, 0, 0, 0.25);
+}
+
+.hud-panel--tl::-webkit-scrollbar {
+  width: 5px;
+}
+
+.hud-panel--tl::-webkit-scrollbar-thumb {
+  background: rgba(200, 144, 42, 0.5);
+  border-radius: 3px;
 }
 
 /* Player card layout */
@@ -525,11 +537,10 @@
   background:
     linear-gradient(180deg, rgba(18, 24, 32, 0.96), rgba(10, 14, 20, 0.96));
   box-shadow: inset 0 0 0 1px rgba(232, 184, 75, 0.06);
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .mission-card__header {
@@ -556,32 +567,19 @@
   color: #16c85a;
 }
 
+/* Whole mission body scrolls with the left panel — nothing pinned over it */
+.mission-card__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .mission-card__list {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  flex: 1 1 auto;
-  min-height: 72px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding-right: 2px;
-  /* Thin gold scrollbar so the overflow is obvious */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(200, 144, 42, 0.55) rgba(0, 0, 0, 0.25);
-}
-
-.mission-card__list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.mission-card__list::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 3px;
-}
-
-.mission-card__list::-webkit-scrollbar-thumb {
-  background: rgba(200, 144, 42, 0.55);
-  border-radius: 3px;
+  overflow: visible;
+  min-height: 0;
 }
 
 .mission-row {
@@ -663,7 +661,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   padding: 6px 8px;
   border-left: 2px solid #e8b84b;
   background: rgba(232, 184, 75, 0.06);
@@ -3649,20 +3647,56 @@
     flex: 1;
   }
 
-  /* Keep clear of the mobile joystick / interact cluster */
+  /* Keep clear of the mobile joystick / interact cluster.
+     Same gold-top chrome as joystick / E button / action bar so the HUD rhymes. */
   .zone-prompt {
-    bottom: 148px;
-    font-size: 15px;
-    padding: 10px 18px;
-    max-width: min(92vw, 420px);
+    bottom: 168px;
+    left: 50%;
+    right: auto;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 9px 14px;
+    max-width: min(78vw, 300px);
+    white-space: normal;
+    text-align: center;
+    gap: 0;
+    border-radius: 6px;
+    border: 1.5px solid rgba(232, 184, 75, 0.55);
+    border-top: 2px solid #c8902a;
+    background: rgba(6, 10, 14, 0.92);
+    box-shadow: 0 0 16px rgba(0, 0, 0, 0.45), 0 0 12px rgba(200, 144, 42, 0.18);
+  }
+
+  /* Mobile already has the big E button — hide the duplicate key chip */
+  .zone-prompt__key {
+    display: none;
+  }
+
+  .level-up-toast {
+    top: 12%;
+    padding: 10px 14px;
+    border: 1.5px solid rgba(232, 184, 75, 0.55);
+    border-top: 2px solid #c8902a;
+    border-radius: 6px;
+    background: rgba(6, 10, 14, 0.92);
+    box-shadow: 0 0 16px rgba(0, 0, 0, 0.45), 0 0 12px rgba(200, 144, 42, 0.2);
+  }
+
+  .mission-hud {
+    bottom: auto;
+    top: 52px;
+    padding: 5px 12px;
+    max-width: min(300px, 82vw);
+    border-radius: 6px;
+    border: 1.5px solid rgba(232, 184, 75, 0.4);
+    border-top: 2px solid #c8902a;
     white-space: normal;
     text-align: center;
   }
 
-  .zone-prompt__key {
-    width: 26px;
-    height: 26px;
-    font-size: 14px;
+  .mobile-interact-btn {
+    border-top: 2px solid #c8902a;
   }
 
   /* ── Collapsed-into-a-button sidebars ── */
@@ -6336,9 +6370,9 @@
 @media (max-width: 600px) {
   .mission-hud {
     bottom: auto;
-    top: 58px;
+    top: 52px;
     transform: translateX(-50%);
-    max-width: min(340px, 86vw);
+    max-width: min(300px, 82vw);
     font-size: 90%;
   }
 }
