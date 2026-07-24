@@ -221,9 +221,11 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 // Keep Realtime JWT aligned with auth so signed-in presence keys match track().
 if (supabase) {
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     if (session?.access_token) {
       void supabase.realtime.setAuth(session.access_token);
+    } else if (event === 'SIGNED_OUT') {
+      void supabase.realtime.setAuth('');
     }
   });
 }

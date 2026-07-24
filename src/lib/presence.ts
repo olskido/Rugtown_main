@@ -3,10 +3,9 @@
  * ───────────────────
  * Supabase Realtime presence helpers for the RugTown city channel.
  *
- * Guests and signed-in accounts share the same public city topic.
- * Authenticated users must use an explicit presence key (their user id)
- * — without it, JWT-default keys + competing service channels can leave
- * signed-in players invisible to each other while guests still meet.
+ * Production (Vercel) and localhost share this path. Failures on Vercel are
+ * usually missing build-time VITE_SUPABASE_* or auth JWT not applied before
+ * subscribe — never hardcode origins here.
  */
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
@@ -24,25 +23,56 @@ export type PresenceCountState =
 /** Shared city presence / broadcast topic (public channel). */
 export const CITY_TOPIC = 'rugtown:city';
 
+const IS_DEV = import.meta.env.DEV;
+
+function presenceLog(message: string, extra?: Record<string, unknown>): void {
+  if (!IS_DEV) return;
+  if (extra) console.info(`[presence] ${message}`, extra);
+  else console.info(`[presence] ${message}`);
+}
+
+function isCityTopic(topic: string): boolean {
+  return (
+    topic === CITY_TOPIC
+    || topic === `realtime:${CITY_TOPIC}`
+    || topic.endsWith(`:${CITY_TOPIC}`)
+  );
+}
+
 /**
- * Remove any Realtime channel already registered on the city topic.
- * Prevents a duplicate-join `CHANNEL_ERROR` when a stale channel is still
- * registered — e.g. the landing-page counter, or a React StrictMode
- * double-mount in development.
+ * Remove city-topic channels. Prefer removing only `except` when provided
+ * so a landing observer retry cannot wipe an active game channel.
  */
-function removeStaleCityChannels(): void {
+function removeStaleCityChannels(except?: RealtimeChannel | null): void {
   if (!supabase) return;
   for (const ch of supabase.getChannels()) {
-    const topic = ch.topic ?? '';
-    // Match `rugtown:city` and Supabase's `realtime:rugtown:city` form only.
-    // Do NOT match `social:…`, `party:…`, etc.
-    if (
-      topic === CITY_TOPIC
-      || topic === `realtime:${CITY_TOPIC}`
-      || topic.endsWith(`:${CITY_TOPIC}`)
-    ) {
+    if (except && ch === except) continue;
+    if (isCityTopic(ch.topic ?? '')) {
       supabase.removeChannel(ch);
     }
+  }
+}
+
+/**
+ * Apply the current session JWT to the Realtime socket and wait for it.
+ * Critical for signed-in multiplayer on production networks.
+ */
+export async function syncRealtimeAuth(): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      await supabase.realtime.setAuth(session.access_token);
+      presenceLog('realtime auth set', { hasSession: true });
+      return true;
+    }
+    presenceLog('realtime auth anon', { hasSession: false });
+    return false;
+  } catch (err) {
+    presenceLog('realtime auth failed', {
+      error: err instanceof Error ? err.message : 'unknown',
+    });
+    return false;
   }
 }
 
@@ -53,6 +83,7 @@ function removeStaleCityChannels(): void {
 export function createCityChannel(presenceKey: string): RealtimeChannel | null {
   if (!isSupabaseConfigured || !supabase) return null;
   removeStaleCityChannels();
+  presenceLog('create channel', { topic: CITY_TOPIC, keyPrefix: presenceKey.slice(0, 8) });
   return supabase.channel(CITY_TOPIC, {
     config: {
       private: false,
@@ -64,8 +95,6 @@ export function createCityChannel(presenceKey: string): RealtimeChannel | null {
 
 /**
  * Fully remove a city channel from the client registry (not just unsubscribe).
- * `unsubscribe()` alone leaves the channel registered, which causes the next
- * subscribe on the same topic to collide.
  */
 export function removeCityChannel(channel: RealtimeChannel | null): void {
   if (!supabase || !channel) return;
@@ -101,23 +130,8 @@ export function flattenPresenceState(
 }
 
 /**
- * Keep the Realtime socket JWT in sync with the auth session.
- * Signed-in players otherwise can subscribe as a stale anon socket while
- * track() is keyed to their user id — guests still meet, accounts don't.
- */
-export function syncRealtimeAuth(): void {
-  if (!supabase) return;
-  void supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session?.access_token) {
-      void supabase.realtime.setAuth(session.access_token);
-    }
-  });
-}
-
-/**
  * Subscribe to the city presence channel and report the live player count.
- * Does not track a player — read-only listener for landing page stats.
- * Returns an unsubscribe function.
+ * Read-only observer for the landing page — does not track a player body.
  */
 export function subscribeCityPresenceCount(
   onUpdate: (state: PresenceCountState) => void,
@@ -127,33 +141,41 @@ export function subscribeCityPresenceCount(
     return () => {};
   }
 
-  syncRealtimeAuth();
-
-  // Observer key must not collide with a real player's presence key.
   const observerKey = `observer_${Math.random().toString(36).slice(2, 10)}`;
-  let current: RealtimeChannel | null = createCityChannel(observerKey);
-  if (!current) {
-    onUpdate({ status: 'unavailable' });
-    return () => {};
-  }
-
-  onUpdate({ status: 'connecting' });
+  let current: RealtimeChannel | null = null;
   let retries = 0;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
+  let generation = 0;
 
-  const attach = (ch: RealtimeChannel) => {
+  onUpdate({ status: 'connecting' });
+
+  const attach = async () => {
+    if (disposed) return;
+    const gen = ++generation;
+    await syncRealtimeAuth();
+    if (disposed || gen !== generation) return;
+
+    removeStaleCityChannels(current);
+    const ch = supabase!.channel(CITY_TOPIC, {
+      config: {
+        private: false,
+        broadcast: { self: false },
+        presence: { key: observerKey },
+      },
+    });
     current = ch;
+
     ch
       .on('presence', { event: 'sync' }, () => {
         const state = ch.presenceState<PresencePayload>();
         const all = flattenPresenceState(state as Record<string, PresencePayload[] | undefined>);
-        // Observers don't track — count only payloads that look like players.
         const players = all.filter((p) => !p.id.startsWith('observer_'));
         onUpdate({ status: 'connected', count: players.length });
       })
       .subscribe((status) => {
-        if (disposed) return;
+        presenceLog(`landing ${status}`);
+        if (disposed || gen !== generation) return;
         if (status === 'SUBSCRIBED') {
           retries = 0;
           return;
@@ -167,25 +189,22 @@ export function subscribeCityPresenceCount(
           const delay = Math.min(1000 * 2 ** retries, 8000);
           retryTimer = setTimeout(() => {
             retryTimer = null;
-            if (disposed || !supabase) return;
+            if (disposed || gen !== generation) return;
             removeCityChannel(ch);
-            syncRealtimeAuth();
-            const next = createCityChannel(observerKey);
-            if (!next) {
-              onUpdate({ status: 'unavailable' });
-              return;
-            }
-            attach(next);
+            if (current === ch) current = null;
+            void attach();
           }, delay);
         }
       });
   };
 
-  attach(current);
+  void attach();
 
   return () => {
     disposed = true;
+    generation += 1;
     if (retryTimer) clearTimeout(retryTimer);
     removeCityChannel(current);
+    current = null;
   };
 }

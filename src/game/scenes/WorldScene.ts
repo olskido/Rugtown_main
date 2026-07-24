@@ -20,6 +20,7 @@ import {
   type CanonicalBuildingPlot,
 } from '../world/NewCanonicalWorld';
 import { WorldCameraController } from '../camera/WorldCameraController';
+import { ellipsizeName, layoutNameplates, type NameplateSlot } from '../ui/NameplateLayout';
 import type { MinimapEventMarker, MinimapLiveSnapshot } from '../minimap/MinimapTypes';
 import {
   formatInteractPrompt,
@@ -170,6 +171,10 @@ const NPC_SPEECH_DURATION = 3200;   // ms a speech bubble stays visible
 const NPC_SPEECH_CHANCE   = 0.55;   // odds a given attempt actually shows a line
 const NPC_SPEECH_MAX_VISIBLE = 4;   // hard cap on simultaneous citizen speech bubbles (any source)
 const NPC_LABEL_NEAR_RADIUS = 70;   // px — close-encounter radius; names are hidden by default (see updateNpcs)
+/** HiDPI-aware text backing resolution — keeps nameplates sharp on phones. */
+const WORLD_TEXT_RESOLUTION = Math.min(3, Math.max(2, Math.round(
+  (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1,
+)));
 
 /* ─── Phase 8H — compact-world population model ───
    Centralizes the tuning that's specific to rebalancing NPC population for
@@ -876,7 +881,7 @@ export class WorldScene extends Phaser.Scene {
       padding: { x: 5, y: 2 },
       stroke: '#000000',
       strokeThickness: 4,
-      resolution: 2,
+      resolution: WORLD_TEXT_RESOLUTION,
     }).setOrigin(0.5, 1).setDepth(11);
 
     this.playerSpeech = this.add.text(0, 0, '', {
@@ -888,7 +893,7 @@ export class WorldScene extends Phaser.Scene {
       stroke: '#000000',
       strokeThickness: 3,
       align: 'center',
-      resolution: 2,
+      resolution: WORLD_TEXT_RESOLUTION,
     }).setOrigin(0.5, 1).setDepth(12).setVisible(false);
 
     // Container for character transform (camera no longer startFollows this)
@@ -1212,6 +1217,9 @@ export class WorldScene extends Phaser.Scene {
 
     /* ── Remote real players (Realtime Presence) ── */
     this.updateRemotePlayers(clampedDelta);
+
+    /* ── Nameplate collision pass (screen-space stack / cull) ── */
+    this.layoutWorldNameplates();
 
     /* ── Event Engine weather overlay (purely cosmetic, additive layer) ── */
     this.updateWeatherEffect(clampedDelta);
@@ -1550,7 +1558,7 @@ export class WorldScene extends Phaser.Scene {
       // Citizen" suffix shown up close (see updateNpcs()) and the
       // existing [NPC] tags in chat/dialogue, without cluttering every
       // citizen's head with text all the time (req. C).
-      const label  = this.add.text(0, 0, name, {
+      const label  = this.add.text(0, 0, ellipsizeName(name, 12), {
         fontFamily: '"Cinzel", serif',
         fontSize:   '10px',
         color:      '#d0dce8',
@@ -1558,7 +1566,7 @@ export class WorldScene extends Phaser.Scene {
         padding: { x: 4, y: 2 },
         stroke: '#000000',
         strokeThickness: 3,
-        resolution: 2,
+        resolution: WORLD_TEXT_RESOLUTION,
       }).setOrigin(0.5, 1).setDepth(7.2);
 
       const speech = this.add.text(0, 0, '', {
@@ -1570,7 +1578,7 @@ export class WorldScene extends Phaser.Scene {
         stroke: '#000000',
         strokeThickness: 3,
         align: 'center',
-        resolution: 2,
+        resolution: WORLD_TEXT_RESOLUTION,
       }).setOrigin(0.5, 1).setDepth(7.4).setVisible(false);
 
       // Idle-leaning citizens pause longer and wander less; gatherers stay
@@ -1868,9 +1876,59 @@ export class WorldScene extends Phaser.Scene {
     const headYLocal = -TARGET_DISPLAY_HEIGHT * NPC_SCALE * 0.55;
     const labelY = n.py + headYLocal - 3;
     n.label.setPosition(Math.round(n.px), Math.round(labelY));
-    // Small fixed-per-citizen jitter (assigned once at spawn) so two
-    // bubbles above nearby citizens don't perfectly overlap (req. D3).
-    n.speech.setPosition(n.px + n.speechOffsetX, labelY - 10 + n.speechOffsetY);
+    // Keep speech above the nameplate so bubbles don't sit on names.
+    const speechLift = n.speech.visible ? 22 : 10;
+    n.speech.setPosition(n.px + n.speechOffsetX, labelY - speechLift + n.speechOffsetY);
+  }
+
+  /**
+   * Screen-space nameplate layout — local > remote > NPC priority,
+   * vertical stacking when anchors collide, cull when crowded/off-camera.
+   */
+  private layoutWorldNameplates() {
+    const cam = this.cameras.main;
+    if (!cam || !this.playerLabel) return;
+
+    const slots: NameplateSlot[] = [];
+    const headLocal = -TARGET_DISPLAY_HEIGHT * PLAYER_VISUAL_SCALE * 0.55;
+    slots.push({
+      id: 'local',
+      priority: 'local',
+      worldX: this.px,
+      worldY: this.py + headLocal - 4,
+      text: this.playerLabel,
+      forceVisible: true,
+    });
+
+    this.remotePlayerEntries.forEach((entry, id) => {
+      if (!entry.label?.visible && !entry.label) return;
+      const head = -TARGET_DISPLAY_HEIGHT * REMOTE_PLAYER_VISUAL_SCALE * 0.55;
+      slots.push({
+        id: `remote:${id}`,
+        priority: 'remote',
+        worldX: entry.px,
+        worldY: entry.py + head - 4,
+        text: entry.label,
+      });
+    });
+
+    for (let i = 0; i < this.npcs.length; i++) {
+      const n = this.npcs[i];
+      if (!n.label.visible) continue;
+      const head = -TARGET_DISPLAY_HEIGHT * NPC_SCALE * 0.55;
+      slots.push({
+        id: `npc:${i}`,
+        priority: 'npc',
+        worldX: n.px,
+        worldY: n.py + head - 3,
+        text: n.label,
+      });
+    }
+
+    layoutNameplates(cam, slots, {
+      minGapPx: cam.width < 500 ? 13 : 15,
+      maxSecondary: cam.width < 500 ? 5 : 10,
+    });
   }
 
   /**
@@ -3970,14 +4028,14 @@ export class WorldScene extends Phaser.Scene {
         // local player's label (gold).
         const label  = this.add.text(0, 0, this.formatRemoteNameplate(p.username, p.rep, p.holderTier), {
           fontFamily: '"Cinzel", serif',
-          fontSize:   '13px',
+          fontSize:   '12px',
           fontStyle:  'bold',
           color:      '#40e8f8',
           backgroundColor: 'rgba(0,12,20,0.94)',
-          padding: { x: 6, y: 3 },
+          padding: { x: 5, y: 2 },
           stroke: '#001828',
           strokeThickness: 4,
-          resolution: 2,
+          resolution: WORLD_TEXT_RESOLUTION,
           align: 'center',
         }).setOrigin(0.5, 1).setDepth(11);
 
@@ -3990,7 +4048,7 @@ export class WorldScene extends Phaser.Scene {
           stroke: '#000000',
           strokeThickness: 3,
           align: 'center',
-          resolution: 2,
+          resolution: WORLD_TEXT_RESOLUTION,
         }).setOrigin(0.5, 1).setDepth(12).setVisible(false);
 
         this.remotePlayerEntries.set(p.id, {
@@ -4112,7 +4170,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private formatRemoteNameplate(username: string, rep: number, holderTier: string): string {
-    const tier = holderTier && holderTier !== 'None' ? ` · ${holderTier}` : '';
-    return `${username}\n${rep.toLocaleString()} REP${tier}`;
+    const short = ellipsizeName(username, 12);
+    const tier = holderTier && holderTier !== 'None' ? ` · ${holderTier[0]}` : '';
+    // Single line — multi-line plates collide much more on mobile.
+    return `${short} · ${rep.toLocaleString()} REP${tier}`;
   }
 }

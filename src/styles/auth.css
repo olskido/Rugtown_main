@@ -26,8 +26,8 @@
 /* Narrower card than the outfit creator — auth is form-focused */
 .auth-page__card {
   position: static;
-  width: min(420px, 100%);
-  max-width: 420px;
+  width: min(322px, 92vw);
+  max-width: min(322px, 92vw);
 }
 
 .auth-page__inner {

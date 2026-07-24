@@ -348,8 +348,8 @@
 .hud-panel--tl {
   top: 16px;
   left: 16px;
-  width: 210px;
-  max-height: calc(100vh - 32px);
+  width: var(--rt-panel-tl, min(178px, 42vw));
+  max-height: calc(100dvh - 32px - env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -864,7 +864,7 @@
 .hud-panel--tr {
   top: 16px;
   right: 16px;
-  width: 248px;
+  width: var(--rt-panel-tr, min(210px, 46vw));
 }
 
 /* Phase 10C — wide 3:1 minimap for 4344×1448 world */
@@ -1627,7 +1627,10 @@
 
 .modal-panel {
   position: relative;
-  width: min(380px, 88vw);
+  width: min(322px, 92vw);
+  max-height: var(--rt-modal-max-h, min(88dvh, 720px));
+  display: flex;
+  flex-direction: column;
   background: rgba(7, 10, 14, 0.98);
   border: 2px solid #9a6e1e;
   box-shadow:
@@ -1645,13 +1648,13 @@
 }
 
 @keyframes modal-pop-in {
-  from { opacity: 0; transform: scale(0.92) translateY(10px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes modal-pop-out {
-  from { opacity: 1; transform: scale(1) translateY(0); }
-  to   { opacity: 0; transform: scale(0.95) translateY(6px); }
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(6px); }
 }
 
 .modal-panel .panel-corner { font-size: 12px; color: #c8902a; }
@@ -1766,7 +1769,12 @@
 
 .modal-body {
   position: relative;
-  padding: 16px 16px 18px;
+  padding: var(--rt-pad-md, 10px) var(--rt-pad-md, 10px) var(--rt-pad-lg, 14px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-text {

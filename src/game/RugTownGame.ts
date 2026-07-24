@@ -62,15 +62,16 @@ export class RugTownGame {
       // Transparent so any React elements layered behind show through
       backgroundColor: '#050c10',
 
-      // Canvas anti-aliasing off for pixel art sharpness
-      // (won't matter for the photo-style reference, but good default)
+      // Canvas anti-aliasing off; roundPixels keeps sprites/text from
+      // landing on half-pixels (a common blur source on mobile DPR).
       antialias: false,
       pixelArt: false,
 
-      // Prefer the discrete/faster GPU where the browser offers a choice —
-      // meaningfully raises baseline FPS on laptops with hybrid graphics.
       render: {
         powerPreference: 'high-performance',
+        roundPixels: true,
+        antialias: false,
+        pixelArt: false,
       },
 
       // Delta smoothing (smoothStep) averages frame delta over recent

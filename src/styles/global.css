@@ -22,6 +22,18 @@
   --text:        #c8b89a;
   --text-dim:    #7a6a52;
 
+  /* ~85% denser UI tokens — spacing/type, NOT transform:scale (avoids blur) */
+  --rt-ui: 0.85;
+  --rt-pad-xs: 4px;
+  --rt-pad-sm: 7px;
+  --rt-pad-md: 10px;
+  --rt-pad-lg: 14px;
+  --rt-panel-tl: min(178px, 42vw);
+  --rt-panel-tr: min(210px, 46vw);
+  --rt-modal-max-h: min(88dvh, 720px);
+  --rt-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --rt-safe-top: env(safe-area-inset-top, 0px);
+
   /* Numeric gold scale + text/font tokens used by LandingPage (landing.css) —
      same palette as above, just exposed under the naming landing.css expects. */
   --gold-200: #f3d896;
@@ -46,16 +58,15 @@
 html, body, #root {
   width: 100%;
   height: 100%;
+  height: 100dvh;
+  max-width: 100vw;
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: 'Cinzel', Georgia, serif;
   -webkit-font-smoothing: antialiased;
-  /* Mobile: stop pull-to-refresh/rubber-band scrolling at the document
-     edges. Deliberately NOT setting touch-action/user-select here —
-     that's scoped to the game canvas/joystick in game.css instead, so
-     HUD form controls (sliders, the chat input) keep normal touch
-     behavior. */
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: geometricPrecision;
   overscroll-behavior: none;
 }
 

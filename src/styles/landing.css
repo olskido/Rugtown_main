@@ -25,10 +25,15 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Don't center vertically — card sits at ~40% from top like Image 2 */
   justify-content: flex-start;
-  overflow: hidden;
-  /* Stagger all children on mount */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  height: 100%;
+  height: 100dvh;
+  max-width: 100vw;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   opacity: 0;
   transition: opacity 0.4s ease;
 }
@@ -229,8 +234,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Shift card up slightly — in Image 2 it's above center */
-  padding: 24px 16px 110px;
+  padding: clamp(12px, 3vh, 24px) 14px calc(88px + env(safe-area-inset-bottom, 0px));
+  min-height: 0;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -245,7 +250,7 @@
 .landing__card {
   position: relative;
   width: 100%;
-  max-width: 380px;
+  max-width: min(322px, 92vw);
 
   /* Card background — deep dark matching Image 1 panels */
   background: rgba(4, 8, 12, 0.94);
@@ -318,13 +323,13 @@
 
 /* ── Card inner ── */
 .card__inner {
-  padding: 28px 28px 24px;
+  padding: clamp(14px, 3.2vh, 24px) clamp(14px, 4vw, 24px) clamp(12px, 2.5vh, 20px);
 }
 
 /* ── Logo section ── */
 .card__logo-section {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: clamp(12px, 2.5vh, 20px);
 }
 
 /* Arch icon above logo — decorative architectural motif from Image 2 */
@@ -348,14 +353,13 @@
 .card__logo-text {
   display: block;
   font-family: var(--font-display);
-  font-size: clamp(26px, 5vw, 34px);
+  font-size: clamp(22px, 4.6vw, 30px);
   font-weight: 900;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.16em;
   color: var(--gold-200);
-  /* Glow pulse animation */
   animation: logoGlow 4s ease-in-out infinite;
-  /* Subtle text stroke for crispness */
-  -webkit-text-stroke: 0.5px rgba(232, 184, 75, 0.3);
+  /* Avoid stroke on mobile — common blur source when scaled */
+  -webkit-text-stroke: 0;
 }
 
 /* Side decorative lines flanking the logo */
@@ -1016,21 +1020,26 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   RESPONSIVE
+   RESPONSIVE — denser ~85% chrome, short phones scroll, safe-area
    ══════════════════════════════════════════════════════════════ */
 
-/* Tablet */
 @media (max-width: 768px) {
   .landing__content {
-    padding-bottom: 90px;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   }
 
   .landing__card {
-    max-width: 340px;
+    max-width: min(300px, 92vw);
   }
 
   .card__inner {
-    padding: 22px 20px 18px;
+    padding: 16px 16px 12px;
+  }
+
+  .card__arch-icon {
+    width: 48px;
+    height: 28px;
+    margin-bottom: 6px;
   }
 
   .features__bar {
@@ -1038,32 +1047,48 @@
   }
 
   .feature-card {
-    padding: 10px 4px 8px;
+    padding: 8px 4px 6px;
+    min-height: 44px;
   }
 
   .feature-card__icon {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
   }
 
   .feature-card__label {
-    font-size: 7px;
+    font-size: 9px;
+    letter-spacing: 0.02em;
   }
 }
 
-/* Mobile */
 @media (max-width: 480px) {
+  .landing__content {
+    align-items: flex-start;
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+
   .card__logo-text {
-    font-size: 24px;
-    letter-spacing: 0.15em;
+    font-size: 20px;
+    letter-spacing: 0.12em;
   }
 
   .card__inner {
-    padding: 18px 16px 14px;
+    padding: 12px 14px 10px;
+  }
+
+  .card__logo-section {
+    margin-bottom: 10px;
   }
 
   .card__btn-row {
     grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .btn {
+    min-height: 44px;
   }
 
   .features__bar {
@@ -1075,6 +1100,10 @@
     border-bottom: 1px solid rgba(200, 144, 42, 0.1);
   }
 
+  .feature-card__label {
+    font-size: 9px;
+  }
+
   .card__stats {
     flex-wrap: wrap;
     gap: 6px;
@@ -1082,14 +1111,37 @@
   }
 }
 
-/* Very small screens */
 @media (max-width: 360px) {
   .card__logo-text {
-    font-size: 20px;
+    font-size: 18px;
+    letter-spacing: 0.1em;
+  }
+
+  .landing__card {
+    max-width: min(288px, 94vw);
   }
 
   .btn--primary {
-    height: 42px;
+    height: 44px;
     font-size: 11px;
+  }
+}
+
+@media (max-height: 640px) {
+  .landing__content {
+    align-items: flex-start;
+    padding-top: 8px;
+  }
+
+  .card__arch-icon {
+    display: none;
+  }
+
+  .card__logo-section {
+    margin-bottom: 8px;
+  }
+
+  .card__inner {
+    padding: 10px 12px 8px;
   }
 }

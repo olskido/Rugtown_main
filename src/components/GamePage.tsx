@@ -2531,13 +2531,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       if (disposed || retryTimer) return;
       const delay = Math.min(1500 * 2 ** retries, 8000);
       retries += 1;
-      retryTimer = setTimeout(() => { retryTimer = null; connect(); }, delay);
+      retryTimer = setTimeout(() => { retryTimer = null; void connect(); }, delay);
     };
 
-    const connect = () => {
+    const connect = async () => {
       if (disposed) return;
       teardownChannel();
-      syncRealtimeAuth();
+      await syncRealtimeAuth();
+      if (disposed) return;
 
       const ch = createCityChannel(presenceIdRef.current);
       if (!ch) { setConnState('offline'); return; }
@@ -2627,6 +2628,12 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           })();
         })
         .subscribe(async (status) => {
+          if (import.meta.env.DEV) {
+            console.info('[presence] game', status, {
+              configured: isSupabaseConfigured,
+              keyPrefix: presenceIdRef.current.slice(0, 8),
+            });
+          }
           if (disposed) return;
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
             channelSubscribedRef.current = false;
@@ -2690,10 +2697,21 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       }, 300);
     };
 
-    connect();
+    void connect();
+
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible' || disposed) return;
+      if (!channelSubscribedRef.current) {
+        void connect();
+      } else {
+        void syncRealtimeAuth();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       disposed = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
       teardownChannel();
     };
