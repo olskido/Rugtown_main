@@ -153,6 +153,43 @@ export const TITLE_CATALOG: TitleDef[] = [
     unlockAchievementId: 'ach_level_25',
     hidden: false,
   },
+  {
+    id: 'title_new_citizen',
+    displayName: 'New Citizen',
+    description: 'Finished RugTown onboarding.',
+    rarity: 'common',
+    category: 'progression',
+    unlockAchievementId: 'ach_onboarding_complete',
+    hidden: false,
+    icon: '◆',
+  },
+  {
+    id: 'title_market_scout',
+    displayName: 'Market Scout',
+    description: 'Learned the market beat.',
+    rarity: 'uncommon',
+    category: 'exploration',
+    unlockAchievementId: 'ach_hall_candidate',
+    hidden: false,
+  },
+  {
+    id: 'title_event_runner',
+    displayName: 'Event Runner',
+    description: 'Joined city events with intent.',
+    rarity: 'uncommon',
+    category: 'events',
+    unlockAchievementId: 'ach_first_city_event',
+    hidden: false,
+  },
+  {
+    id: 'title_party_player',
+    displayName: 'Party Player',
+    description: 'Completed a crew action.',
+    rarity: 'uncommon',
+    category: 'social',
+    unlockAchievementId: 'ach_party_mission',
+    hidden: false,
+  },
 ];
 
 export function getTitle(id: string): TitleDef | undefined {

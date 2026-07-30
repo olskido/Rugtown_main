@@ -100,12 +100,19 @@ function NoticeSection({
   );
 }
 
-export function NoticeBoardPanel() {
+export function NoticeBoardPanel({
+  onAcceptMissionLead,
+  onOpenMissions,
+}: {
+  onAcceptMissionLead?: () => void;
+  onOpenMissions?: () => void;
+} = {}) {
   const [tokens, setTokens] = useState<MarketToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [leadPinned, setLeadPinned] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +166,28 @@ export function NoticeBoardPanel() {
 
   return (
     <div className="notice-board">
+      <div className="notice-mission-hub">
+        <p className="notice-mission-hub__title">Mission Desk</p>
+        <p className="notice-mission-hub__text">
+          Pin a city lead, then track starter, daily, weekly, and story missions from your HUD.
+        </p>
+        <div className="notice-mission-hub__actions">
+          <button
+            type="button"
+            className="notice-refresh-btn"
+            onClick={() => {
+              setLeadPinned(true);
+              onAcceptMissionLead?.();
+            }}
+          >
+            {leadPinned ? '✓ Lead pinned' : 'Accept mission lead'}
+          </button>
+          <button type="button" className="notice-refresh-btn" onClick={() => onOpenMissions?.()}>
+            Open mission list
+          </button>
+        </div>
+      </div>
+
       <div className="notice-toolbar">
         <span className="notice-toolbar__tag">DATA: DEXSCREENER · SOLANA · READ-ONLY</span>
         <button className="notice-refresh-btn" onClick={handleRefresh} disabled={refreshing}>

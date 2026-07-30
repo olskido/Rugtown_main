@@ -12,11 +12,14 @@ import type { EventRarity, EventReward, EventLocation, EventPhase as EnginePhase
 import { EVENT_DEFINITIONS } from '../game/events/EventDefinitions';
 import { MarketPanel } from './MarketPanel';
 import { NoticeBoardPanel } from './NoticeBoardPanel';
+import { getGenericBuildingModal } from './building/BuildingModalCopy';
 import { AlphaLoungePanel } from './AlphaLoungePanel';
+import { emitGameplayEvent } from '../game/missions/MissionEventBridge';
 import { HudCharacterPortrait } from './HudCharacterPortrait';
 import { fetchTrendingSolanaTokens, type MarketToken } from '../services/dexscreener';
 import { saveRep, saveBadge, saveInventoryItem, saveDistrictUnlock, updateLastSeen } from '../lib/profile';
 import { loadProgress, patchProgress } from '../lib/progress';
+import { saveRugTownSession } from '../game/persistence/RugTownSessionStore';
 import {
   pickLivingCityEvent,
   LIVING_CITY_EVENT_MIN_GAP,
@@ -132,6 +135,14 @@ interface MissionEntry {
   objectiveHint?: string;
   rewardXp: number;
   rewardRep: number;
+  objectives?: Array<{
+    id: string;
+    label: string;
+    current: number;
+    target: number;
+    done: boolean;
+  }>;
+  category?: string;
 }
 
 interface MissionRegistryState {
@@ -314,15 +325,26 @@ const LANDMARK_COLORS: Record<string, string> = {
 
 /* ─── Interaction zone modal content — flavor text only, no backend ─── */
 const ZONE_INFO: Record<string, { title: string; sub: string }> = {
-  fountain: { title: 'The Fountain',          sub: 'Make a wish, degen' },
-  market:   { title: 'Meme Market',           sub: 'Where bags are made and lost' },
-  bridge:   { title: 'The Bridge',            sub: 'Crossing into new districts' },
-  fame:     { title: 'Hall of Fame',          sub: 'Legends of RugTown' },
-  whale:    { title: 'Whale Tower',           sub: 'Watch the big wallets' },
-  notice:   { title: 'Notice Board',          sub: 'Live market notices, pinned fresh' },
-  alpha:    { title: 'Alpha Lounge',          sub: 'Local market read — no external AI' },
+  fountain: { title: 'Spring Water', sub: 'Make a wish, degen' },
+  market: { title: 'Meme Market', sub: 'Where bags are made and lost' },
+  market_shop: { title: 'Market Shop', sub: 'Browse only — no purchases' },
+  bridge: { title: 'Main Bridge', sub: 'Crossing into new districts' },
+  fame: { title: 'Hall of Fame', sub: 'Legends of RugTown' },
+  whale: { title: 'Whale Tower', sub: 'Watch the big wallets' },
+  notice: { title: 'Notice Board', sub: 'Missions hub + live notices' },
+  alpha: { title: 'Alpha Lounge', sub: 'Rumours without a token gate' },
   cashback: { title: 'Holder Cashback Vault', sub: 'Locked until $RUGTOWN activation' },
-  arena:    { title: 'Future Arena',          sub: 'The grand stage of RugTown' },
+  arena: { title: 'Future Arena', sub: 'Training and preview only' },
+  coffee: { title: 'Coffee Shop', sub: 'Gossip and warm cups' },
+  government: { title: 'Government Quarter', sub: 'Civic notices and weekly cycles' },
+  trading_academy: { title: 'Trading Academy', sub: 'Lessons before leverage' },
+  financial_office: { title: 'Financial Office', sub: 'Progression ledgers' },
+  holder_bank: { title: 'Holder Bank', sub: 'Account preview — no wallet' },
+  research_observatory: { title: 'Research Observatory', sub: 'Event signals and clues' },
+  tournament_hall: { title: 'Tournament Hall', sub: 'Challenge desk' },
+  nft_gallery: { title: 'NFT Gallery', sub: 'Cosmetic exhibits only' },
+  nft_creator_studio: { title: 'NFT Creator Studio', sub: 'Appearance workshop' },
+  park: { title: 'Park Entrance', sub: 'Quiet green meet-up' },
 };
 
 const FAME_LEADERBOARD = [
@@ -705,15 +727,19 @@ interface GamePageProps {
   initialOwnedItemIds?: string[];
   /** District IDs already unlocked, loaded from district_unlocks on login. */
   initialDistrictIds?: string[];
+  /** Restored world position after browser refresh (from RugTownSessionStore). */
+  initialPosition?: { x: number; y: number } | null;
   /** Called by the Settings sign-out button; only rendered when provided. */
   onLogout?: () => void;
 }
 
 /* ─── Component ─── */
-export function GamePage({ playerName, appearance, userEmail, userId, initialRep, initialBadgeIds, initialOwnedItemIds, initialDistrictIds, onLogout }: GamePageProps) {
+export function GamePage({ playerName, appearance, userEmail, userId, initialRep, initialBadgeIds, initialOwnedItemIds, initialDistrictIds, initialPosition = null, onLogout }: GamePageProps) {
   const mountRef   = useRef<HTMLDivElement>(null);
   const gameRef    = useRef<RugTownGame | null>(null);
   const sceneRef   = useRef<WorldScene | null>(null);
+  /** Frozen at mount — Phaser boots once; refresh restore uses this spawn. */
+  const initialPositionRef = useRef(initialPosition);
 
   const [ready,  setReady]  = useState(false);
   const [camera, setCamera] = useState<CameraState>({ x: 0, y: 0, zoom: 0.85 });
@@ -1350,12 +1376,24 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       game = new GameCtor({
       parentId: 'phaser-mount',
       appearance: getCanonicalPlayerAppearance(),
+      initialPosition: initialPositionRef.current ?? null,
       assetGallery: new URLSearchParams(window.location.search).get('assetGallery') === '1',
       onReady: (scene: WorldScene) => {
         if (cancelled) return;
         sceneRef.current = scene;
         setReady(true);
         setWorldSize(scene.getWorldSize());
+
+        try {
+          if (sessionStorage.getItem('rugtown:panel-character') === '1') {
+            sessionStorage.removeItem('rugtown:panel-character');
+            scene.reportGameplayEvent({ type: 'PANEL_OPENED', panelId: 'character' });
+          }
+          if (sessionStorage.getItem('rugtown:appearance-saved') === '1') {
+            sessionStorage.removeItem('rugtown:appearance-saved');
+            scene.reportGameplayEvent({ type: 'APPEARANCE_SAVED' });
+          }
+        } catch { /* ignore */ }
 
         // RugTown Citizens population is randomized per session by
         // WorldScene (createNpcs) and published once — read it here so
@@ -1837,6 +1875,46 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     };
   }, []);
 
+  /* ── Persist route + last safe position (debounced; never every frame) ── */
+  useEffect(() => {
+    if (!ready) return;
+
+    const persist = () => {
+      const scene = sceneRef.current;
+      if (!scene) return;
+      const pos = scene.getPlayerPos();
+      const zoom = scene.game?.registry?.get('zoom') as number | undefined;
+      const district = (scene.game?.registry?.get('currentDistrict') as string | undefined) || null;
+      const mission = (scene.game?.registry?.get('missionState') as { activeMissionId?: string | null } | undefined)
+        ?.activeMissionId ?? null;
+      saveRugTownSession({
+        route: '/play',
+        enteredGame: true,
+        playerName: playerName || '',
+        position: { x: Math.round(pos.x), y: Math.round(pos.y) },
+        districtId: district,
+        activeMissionId: mission,
+        cameraZoom: typeof zoom === 'number' ? zoom : null,
+      }, userId);
+    };
+
+    persist();
+    const id = window.setInterval(persist, 4000);
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') persist();
+    };
+    const onUnload = () => persist();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pagehide', onUnload);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onUnload);
+      persist();
+    };
+  }, [ready, playerName, userId]);
+
   /* ── HUD keyboard shortcuts ── */
   useEffect(() => {
     const closeLandmarkOverlays = () => {
@@ -1879,13 +1957,24 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       if (hud.label === 'Party') {
         closeSpecialPanels();
         setActiveAction(null);
-        setPartyPanelOpen((v) => !v);
+        setPartyPanelOpen((v) => {
+          const next = !v;
+          if (next) {
+            sceneRef.current?.reportGameplayEvent({ type: 'PARTY_JOINED' });
+            sceneRef.current?.reportGameplayEvent({ type: 'PARTY_ACTION' });
+          }
+          return next;
+        });
         return;
       }
       if (hud.label === 'Events') {
         closeSpecialPanels();
         setActiveAction(null);
-        setEventCentreOpen((v) => !v);
+        setEventCentreOpen((v) => {
+          const next = !v;
+          if (next) sceneRef.current?.reportGameplayEvent({ type: 'PANEL_OPENED', panelId: 'events' });
+          return next;
+        });
         return;
       }
       closeSpecialPanels();
@@ -2213,6 +2302,8 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       cityChannelRef.current?.send({ type: 'broadcast', event: 'chat', payload }).catch(() => {});
     }
     completeLevelIfMatches('send_chat');
+    sceneRef.current?.reportGameplayEvent({ type: 'CHAT_SENT' });
+    emitGameplayEvent({ type: 'CHAT_SENT' });
   }, [chatInput, playerName, appendChatMessage, completeLevelIfMatches, showToast]);
 
   const handleChatInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -2241,6 +2332,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       }).catch(() => {});
     }
     completeLevelIfMatches('use_emote');
+    sceneRef.current?.reportGameplayEvent({ type: 'EMOTE_USED' });
   }, [playerName, appendChatMessage, completeLevelIfMatches]);
 
   // Declared after triggerEmote so the dependency is satisfied
@@ -2765,6 +2857,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     });
     progressionService.onCityEventJoined('treasure-hunt', treasureClaim.claimId);
     void rewardService.reportObjective({ objectiveType: 'join_event', ref: 'treasure-hunt' });
+    sceneRef.current?.reportGameplayEvent({ type: 'CITY_EVENT_JOINED', eventId: 'treasure-hunt' });
   }, [treasureClaim, applyHolderMultiplier, unlockBadge, appendChatMessage, playerName, showToast, pushStoryLog, completeLevelIfMatches]);
 
   /* ── Whale Alert claim — same one-shot pattern as the treasure claim
@@ -2795,6 +2888,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     });
     progressionService.onCityEventJoined('whale-alert', whaleClaim.claimId);
     void rewardService.reportObjective({ objectiveType: 'join_event', ref: 'whale-alert' });
+    sceneRef.current?.reportGameplayEvent({ type: 'CITY_EVENT_JOINED', eventId: 'whale-alert' });
   }, [whaleClaim, applyHolderMultiplier, unlockBadge, appendChatMessage, playerName, showToast, pushStoryLog, completeLevelIfMatches]);
 
   /* ── District unlocks — same trigger state as the quests/badges above. ── */
@@ -3050,7 +3144,22 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           </>
         );
       case 'notice':
-        return <NoticeBoardPanel />;
+        return (
+          <NoticeBoardPanel
+            onAcceptMissionLead={() => {
+              sceneRef.current?.reportGameplayEvent({ type: 'MISSION_ACCEPTED' });
+              sceneRef.current?.reportGameplayEvent({ type: 'PANEL_OPENED', panelId: 'notice' });
+              showToast('Mission lead pinned.');
+            }}
+            onOpenMissions={() => {
+              setModalClosing(false);
+              setModalZone(null);
+              setRewardCentreOpen(true);
+              sceneRef.current?.reportGameplayEvent({ type: 'PANEL_OPENED', panelId: 'missions' });
+              sceneRef.current?.reportGameplayEvent({ type: 'MISSION_ACCEPTED' });
+            }}
+          />
+        );
       case 'alpha':
         return <AlphaLoungePanel />;
       case 'cashback':
@@ -3065,6 +3174,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                 <span className="modal-locked-desc">
                   This vault holds automatic cashback rewards for verified $RUGTOWN holders.
                   It will open when the token launches and holder verification is live.
+                  You can still inspect it for story missions.
                 </span>
                 <span className="modal-locked-tag">Locked</span>
               </div>
@@ -3091,8 +3201,16 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
             </button>
           </>
         );
-      default:
-        return null;
+      default: {
+        const copy = getGenericBuildingModal(id, rep, progression?.level ?? 1);
+        return (
+          <>
+            {copy.paragraphs.map((p) => (
+              <p key={p.slice(0, 24)} className="modal-text">{p}</p>
+            ))}
+          </>
+        );
+      }
     }
   };
 
@@ -3293,7 +3411,10 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
             {missionState.missions.length > 0 && (
               <div className="mission-card">
                 <div className="mission-card__header">
-                  <span>Chapter One: The Missing Ledger</span>
+                  <span>
+                    {missionState.missions.find((m) => m.id === missionState.activeMissionId)?.chapterTitle
+                      ?? 'RugTown Missions'}
+                  </span>
                   <span className={`mission-card__status${missionState.completed ? ' mission-card__status--done' : ''}`}>
                     {missionState.completed
                       ? 'Complete'
@@ -3304,8 +3425,8 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                 <div className="mission-card__scroll" data-ui-block-camera>
                   {missionState.completed ? (
                     <div className="mission-active mission-active--done">
-                      <span className="mission-active__label">All missions complete</span>
-                      <span className="mission-active__title">Nice work, degen 🎉</span>
+                      <span className="mission-active__label">Campaign complete</span>
+                      <span className="mission-active__title">Daily and weekly quests stay in Rewards.</span>
                     </div>
                   ) : null}
 
@@ -3321,7 +3442,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                           <div className="mission-row__body">
                             <span className="mission-row__title">{mission.title}</span>
                             {isActive && (
-                              <span className="mission-row__desc">{mission.description}</span>
+                              <>
+                                <span className="mission-row__desc">{mission.description}</span>
+                                {mission.objectives?.map((obj) => (
+                                  <span key={obj.id} className="mission-row__desc">
+                                    {obj.done ? '✓' : '•'} {obj.label} ({obj.current}/{obj.target})
+                                  </span>
+                                ))}
+                              </>
                             )}
                           </div>
                           <span className="mission-row__reward">+{mission.rewardXp} XP<br />+{mission.rewardRep} REP</span>

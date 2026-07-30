@@ -1,10 +1,16 @@
 /**
- * XpCurve.ts — centralized Level 1–50 XP thresholds (Phase 10F).
- * Chapter One pacing: level 1 → 2 is 120 XP, then mild linear and quadratic
- * growth. Its 455 mission XP reaches level 3 (390 XP) and begins level 4.
+ * XpCurve.ts — centralized Level 1–50 XP thresholds.
+ * Curve v3 (gameplay completion): slower early levels so onboarding (~320 XP)
+ * lands around level 2, not a multi-level spike. Existing players keep
+ * grandfathered levels via migrate_progression_curve_v3 on the server.
+ *
+ * Targets: L1–5 accessible, L6–15 regular play, L16–30 sustained, 30+ long-term.
  */
 
 import { MAX_LEVEL } from './types';
+
+/** Client curve version — must stay aligned with SQL rt_xp_required_for_level_v3. */
+export const PROGRESSION_CURVE_VERSION = 3;
 
 /**
  * XP required to advance FROM `level` TO `level + 1`.
@@ -13,10 +19,9 @@ import { MAX_LEVEL } from './types';
 export function xpRequiredForLevel(level: number): number {
   if (level < 1) return xpRequiredForLevel(1);
   if (level >= MAX_LEVEL) return 0;
-  // 120 at L1, 150 at L2, 184 at L3; gentler than the former discovery-heavy
-  // curve while retaining clear long-term progression near the level cap.
+  // 200 at L1, 250 at L2, 310 at L3 — steeper than v2 without punishing mid-game.
   const step = level - 1;
-  return Math.round(120 + (27 * step) + (3 * step * step));
+  return Math.round(200 + (50 * step) + (5 * step * step));
 }
 
 /** Cumulative lifetime XP needed to *reach* `level` (level 1 = 0). */

@@ -34,13 +34,15 @@
     "test:character-appearance": "node scripts/test-character-appearance-codec.mjs",
     "test:character-placement-npc": "node scripts/test-character-placement-and-npc-tuning.mjs",
     "analyze:character-bounds": "node scripts/analyze-character-asset-bounds.mjs",
-    "qa:character-compose": "node scripts/compose-character-preview-qa.mjs"
+    "test:session-store": "node scripts/test-session-store.mjs",
+    "test:gameplay-completion": "npx tsx scripts/test-gameplay-completion.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.0",
     "phaser": "^3.60.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.30.4"
   },
   "devDependencies": {
     "@types/react": "^18.2.0",

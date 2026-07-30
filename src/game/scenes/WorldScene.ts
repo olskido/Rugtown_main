@@ -40,6 +40,9 @@ import {
 } from '../../lib/social';
 import { getDistrictAtWorld, WORLD_DISTRICTS } from '../world/WorldDistricts';
 import { MissionSystem, createStarterMissionSystem } from '../systems/MissionSystem';
+import { MissionEventBridge, setActiveMissionBridge } from '../missions/MissionEventBridge';
+import type { GameplayEvent } from '../missions/MissionTypes';
+import { getNpcByLandmark } from '../npcs/FunctionalNpcs';
 import { loadProgress, patchProgress } from '../../lib/progress';
 import {
   buildEnterableDoorZones,
@@ -175,6 +178,8 @@ const NPC_LABEL_NEAR_RADIUS = 70;   // px — close-encounter radius; names are 
 const WORLD_TEXT_RESOLUTION = Math.min(3, Math.max(2, Math.round(
   (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1,
 )));
+/** Sans-serif nameplates stay legible at small sizes; Cinzel blurs on mobile. */
+const NAMEPLATE_FONT = 'Segoe UI, Helvetica Neue, Arial, sans-serif';
 
 /* ─── Phase 8H — compact-world population model ───
    Centralizes the tuning that's specific to rebalancing NPC population for
@@ -606,6 +611,8 @@ export class WorldScene extends Phaser.Scene {
   // World position
   private px = 0;
   private py = 0;
+  /** Optional spawn override from session restore (set before create). */
+  private pendingSpawn: { x: number; y: number } | null = null;
 
   /* ── NPC citizens ── */
   private npcs: NpcData[] = [];
@@ -659,6 +666,7 @@ export class WorldScene extends Phaser.Scene {
   private socialCardCooldownMs = 450;
   private selectedRemotePlayerId: string | null = null;
   private mission: MissionSystem = createStarterMissionSystem();
+  private missionBridge = new MissionEventBridge();
   /* ── Phase 4 World Engine generators ── */
   private buildingGenerator!: BuildingGenerator;
   private decorationGenerator!: DecorationGenerator;
@@ -865,16 +873,31 @@ export class WorldScene extends Phaser.Scene {
       this.architectureOverlay.toggle(this.worldW, this.worldH, this.px, this.py, this.testBuildingSprites);
     });
 
-    /* ── Spawn player in Spring Water spawn zone (slot 0) ── */
-    const spawn = spawnPointForSlot(0);
-    this.px = spawn.x;
-    this.py = spawn.y;
+    /* ── Spawn player: restored session position, else Spring Water ── */
+    const defaultSpawn = spawnPointForSlot(0);
+    const restored = this.pendingSpawn;
+    if (
+      restored
+      && Number.isFinite(restored.x)
+      && Number.isFinite(restored.y)
+      && restored.x > 40
+      && restored.y > 40
+      && restored.x < this.worldW - 40
+      && restored.y < this.worldH - 40
+    ) {
+      this.px = restored.x;
+      this.py = restored.y;
+    } else {
+      this.px = defaultSpawn.x;
+      this.py = defaultSpawn.y;
+    }
+    this.pendingSpawn = null;
 
     /* ── Create player layers (glow + bitmap body + label) ── */
     this.playerGlow  = this.add.graphics().setDepth(8);
     this.playerLabel = this.add.text(0, 0, 'You', {
-      fontFamily: '"Cinzel", serif',
-      fontSize:   '11px',
+      fontFamily: NAMEPLATE_FONT,
+      fontSize:   '12px',
       fontStyle:  'bold',
       color:      '#ffe88a',
       backgroundColor: 'rgba(4,8,12,0.94)',
@@ -885,7 +908,7 @@ export class WorldScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(11);
 
     this.playerSpeech = this.add.text(0, 0, '', {
-      fontFamily: '"Cinzel", serif',
+      fontFamily: NAMEPLATE_FONT,
       fontSize:   '12px',
       color:      '#e8d8c0',
       backgroundColor: 'rgba(10,14,18,0.94)',
@@ -972,6 +995,7 @@ export class WorldScene extends Phaser.Scene {
       this.compactAmbience?.destroy();
       this.compactRoadRenderer?.destroy();
       this.worldCamera?.destroy();
+      setActiveMissionBridge(null);
     });
 
     /* ── Initial draw ── */
@@ -996,6 +1020,10 @@ export class WorldScene extends Phaser.Scene {
     const savedProgress = loadProgress();
     this.mission.restoreCompleted(savedProgress.completedMissions);
     this.visitedInteriors = new Set(savedProgress.visitedInteriors);
+    this.missionBridge.subscribe((ev) => {
+      if (this.mission.handleEvent(ev)) this.publishMissionState();
+    });
+    setActiveMissionBridge(this.missionBridge);
     this.registry.set('currentDistrict', '');
     this.publishMissionState();
     this.registry.set('collisionDebug', false);
@@ -1559,18 +1587,19 @@ export class WorldScene extends Phaser.Scene {
       // existing [NPC] tags in chat/dialogue, without cluttering every
       // citizen's head with text all the time (req. C).
       const label  = this.add.text(0, 0, ellipsizeName(name, 12), {
-        fontFamily: '"Cinzel", serif',
-        fontSize:   '10px',
-        color:      '#d0dce8',
-        backgroundColor: 'rgba(4,8,12,0.90)',
+        fontFamily: NAMEPLATE_FONT,
+        fontSize:   '11px',
+        fontStyle:  'bold',
+        color:      '#e8f0f8',
+        backgroundColor: 'rgba(4,8,12,0.92)',
         padding: { x: 4, y: 2 },
         stroke: '#000000',
-        strokeThickness: 3,
+        strokeThickness: 4,
         resolution: WORLD_TEXT_RESOLUTION,
       }).setOrigin(0.5, 1).setDepth(7.2);
 
       const speech = this.add.text(0, 0, '', {
-        fontFamily: '"Cinzel", serif',
+        fontFamily: NAMEPLATE_FONT,
         fontSize:   '12px',
         color:      '#e8d8c0',
         backgroundColor: 'rgba(10,14,18,0.94)',
@@ -2377,6 +2406,11 @@ export class WorldScene extends Phaser.Scene {
       const now = this.time.now;
       if (now - this.lastInteractFeedbackAt < this.lockedFeedbackSpamMs) return;
       this.lastInteractFeedbackAt = now;
+      // Locked / coming-soon buildings still count as intentional interactions.
+      this.reportGameplayEvent({
+        type: 'LANDMARK_INTERACTED',
+        landmarkId: door.building.worldObjectId,
+      });
       this.events.emit('door-message', {
         buildingId: door.building.id,
         title: door.building.displayName,
@@ -2391,6 +2425,7 @@ export class WorldScene extends Phaser.Scene {
         const now = this.time.now;
         if (now - this.lastInteractFeedbackAt < this.lockedFeedbackSpamMs) return;
         this.lastInteractFeedbackAt = now;
+        this.reportGameplayEvent({ type: 'LANDMARK_INTERACTED', landmarkId: target.id });
         this.events.emit('door-message', {
           buildingId: target.id,
           title: target.name,
@@ -2399,6 +2434,12 @@ export class WorldScene extends Phaser.Scene {
         });
         return;
       }
+      this.reportGameplayEvent({ type: 'LANDMARK_INTERACTED', landmarkId: target.id });
+      this.reportGameplayEvent({ type: 'LANDMARK_VISITED', landmarkId: target.id });
+      const guide = getNpcByLandmark(target.id);
+      if (guide) {
+        this.reportGameplayEvent({ type: 'NPC_INTERACTED', npcRole: guide.roleId, npcName: guide.displayName });
+      }
       this.events.emit('zone-interact', { id: target.id, name: target.name });
       return;
     }
@@ -2406,6 +2447,7 @@ export class WorldScene extends Phaser.Scene {
     if (target.kind === 'npc') {
       const npc = this.npcs.find((n) => n.name === target.name);
       if (!npc) return;
+      this.reportGameplayEvent({ type: 'NPC_INTERACTED', npcName: npc.name, npcRole: 'citizen' });
       this.events.emit('npc-interact', {
         name: npc.name,
         personality: npc.personality,
@@ -2442,14 +2484,20 @@ export class WorldScene extends Phaser.Scene {
     if (target.kind === 'town_crier') {
       const tc = this.townCrier;
       this.events.emit('town-crier-interact', { title: tc?.lines[1] ?? 'Town Crier' });
-      if (this.mission.markTownCrierTalked()) this.publishMissionState();
+      this.reportGameplayEvent({ type: 'TOWN_CRIER_TALKED' });
+      this.reportGameplayEvent({
+        type: 'NPC_INTERACTED',
+        npcRole: 'starter_guide',
+        npcName: 'Town Crier',
+      });
       return;
     }
 
     if (target.kind === 'statue') {
       const statue = this.hallOfFameStatues.find((s) => `statue:${s.rank}` === target.id);
       if (!statue) return;
-      if (this.mission.markBuildingEntered('hall-of-fame')) this.publishMissionState();
+      this.reportGameplayEvent({ type: 'BUILDING_ENTERED', buildingId: 'hall-of-fame' });
+      this.reportGameplayEvent({ type: 'LANDMARK_INTERACTED', landmarkId: 'fame' });
       this.events.emit('statue-interact', {
         rank: statue.rank,
         name: statue.name,
@@ -2488,9 +2536,24 @@ export class WorldScene extends Phaser.Scene {
     });
     this.markInteriorVisited(buildingId);
     this.events.emit('interior-discovered', { interiorId: buildingId, name: building.displayName });
-    if (this.mission.markBuildingEntered(buildingId)) {
-      this.publishMissionState();
+    this.reportGameplayEvent({ type: 'BUILDING_ENTERED', buildingId });
+    this.reportGameplayEvent({ type: 'INTERIOR_ENTERED', buildingId });
+    if (building.worldObjectId) {
+      this.reportGameplayEvent({ type: 'LANDMARK_VISITED', landmarkId: building.worldObjectId });
     }
+    const guide = getNpcByLandmark(building.worldObjectId);
+    if (guide) {
+      this.reportGameplayEvent({
+        type: 'NPC_INTERACTED',
+        npcRole: guide.roleId,
+        npcName: guide.displayName,
+      });
+    }
+  }
+
+  /** React / HUD can feed mission events without touching private mission state. */
+  reportGameplayEvent(event: GameplayEvent): void {
+    this.missionBridge.emit(event);
   }
 
   /** Record an interior as visited (Phase 5), persist + republish if new. */
@@ -2529,7 +2592,12 @@ export class WorldScene extends Phaser.Scene {
     }
     if (near && !this.nearDoorId && !this.interaction.nearZoneId && !this.nearNpcName && this.consumeInteractPress()) {
       this.events.emit('town-crier-interact', { title: tc.lines[1] ?? 'Town Crier' });
-      if (this.mission.markTownCrierTalked()) this.publishMissionState();
+      this.reportGameplayEvent({ type: 'TOWN_CRIER_TALKED' });
+      this.reportGameplayEvent({
+        type: 'NPC_INTERACTED',
+        npcRole: 'starter_guide',
+        npcName: 'Town Crier',
+      });
     }
   }
 
@@ -3618,7 +3686,8 @@ export class WorldScene extends Phaser.Scene {
     }
 
     if (nearest && this.consumeInteractPress()) {
-      if (this.mission.markBuildingEntered('hall-of-fame')) this.publishMissionState();
+      this.reportGameplayEvent({ type: 'BUILDING_ENTERED', buildingId: 'hall-of-fame' });
+      this.reportGameplayEvent({ type: 'LANDMARK_INTERACTED', landmarkId: 'fame' });
       this.events.emit('statue-interact', {
         rank: nearest.rank,
         name: nearest.name,
@@ -3844,6 +3913,18 @@ export class WorldScene extends Phaser.Scene {
     if (this.bitmapPlayer) this.drawPlayer();
   }
 
+  /**
+   * Call before Phaser boots create() so refresh restore lands at the
+   * last safe position instead of Spring Water.
+   */
+  setInitialSpawn(pos: { x: number; y: number } | null | undefined) {
+    if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y)) {
+      this.pendingSpawn = { x: pos.x, y: pos.y };
+    } else {
+      this.pendingSpawn = null;
+    }
+  }
+
   getPlayerBitmap(): BitmapCharacter | null {
     return this.bitmapPlayer;
   }
@@ -4027,7 +4108,7 @@ export class WorldScene extends Phaser.Scene {
         // Cyan label — visually distinct from Citizens (grey) and the
         // local player's label (gold).
         const label  = this.add.text(0, 0, this.formatRemoteNameplate(p.username, p.rep, p.holderTier), {
-          fontFamily: '"Cinzel", serif',
+          fontFamily: NAMEPLATE_FONT,
           fontSize:   '12px',
           fontStyle:  'bold',
           color:      '#40e8f8',
@@ -4040,7 +4121,7 @@ export class WorldScene extends Phaser.Scene {
         }).setOrigin(0.5, 1).setDepth(11);
 
         const speech = this.add.text(0, 0, '', {
-          fontFamily: '"Cinzel", serif',
+          fontFamily: NAMEPLATE_FONT,
           fontSize:   '12px',
           color:      '#e8d8c0',
           backgroundColor: 'rgba(10,14,18,0.94)',

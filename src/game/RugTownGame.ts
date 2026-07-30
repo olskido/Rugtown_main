@@ -20,6 +20,8 @@ export interface RugTownGameConfig {
   parentId: string;
   /** Bitmap appearance chosen on the pre-game character-creator screen. */
   appearance?: CharacterAppearanceV1;
+  /** Optional world spawn from session restore (refresh continuity). */
+  initialPosition?: { x: number; y: number } | null;
   /** Called when the scene is ready */
   onReady?: (scene: WorldScene) => void;
   /** Force Asset Gallery boot (overrides URL when set). */
@@ -40,8 +42,9 @@ export class RugTownGame {
     this.galleryMode = config.assetGallery === true || isAssetGalleryRequested();
 
     // Set before the scene's create() ever runs, so the player's first
-    // draw already uses the chosen appearance.
+    // draw already uses the chosen appearance / restored spawn.
     if (config.appearance) this.worldScene.setAppearance(config.appearance);
+    if (config.initialPosition) this.worldScene.setInitialSpawn(config.initialPosition);
 
     // Wire the ready callback BEFORE Phaser boots — WorldScene fires it
     // after all NPCs are spawned, not at the raw create() return point.

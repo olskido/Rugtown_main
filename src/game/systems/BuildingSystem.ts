@@ -13,6 +13,7 @@ import {
   type LandmarkMeta,
   type LandmarkStatus,
 } from '../interaction/LandmarkCatalog';
+import { isLiveInteractionId } from '../world/WorldObjects';
 
 interface LabelEntry {
   meta: LandmarkMeta;
@@ -23,6 +24,9 @@ interface LabelEntry {
   visibility: LabelVisibility;
   alpha: number;
 }
+
+/** Crisp UI nameplate font — Cinzel blurs at small world sizes on mobile. */
+const NAMEPLATE_FONT = 'Segoe UI, Helvetica Neue, Arial, sans-serif';
 
 const COLORS = {
   bg: 0x060a0e,
@@ -69,13 +73,13 @@ export class BuildingSystem {
       const stem = this.scene.add.graphics().setDepth(4.4);
       const bg = this.scene.add.graphics().setDepth(4.5);
       const text = this.scene.add.text(0, 0, '', {
-        fontFamily: '"Cinzel", serif',
+        fontFamily: NAMEPLATE_FONT,
         fontSize: '13px',
         fontStyle: 'bold',
         color: COLORS.text,
         stroke: '#000000',
-        strokeThickness: 3,
-        resolution: 2,
+        strokeThickness: 4,
+        resolution: Math.min(3, Math.max(2, Math.round((typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1))),
         align: 'center',
       }).setOrigin(0.5, 1).setDepth(4.6);
 
@@ -139,12 +143,17 @@ export class BuildingSystem {
       let vis: LabelVisibility = 'far';
       if (dist <= meta.interactionRadius) vis = 'near';
       else if (dist <= meta.visibilityRadius) vis = 'visible';
+      // Interactive buildings always keep a readable name within an extended radius.
+      if (isLiveInteractionId(meta.id) && vis === 'far' && dist <= meta.visibilityRadius * 2.2) {
+        vis = 'visible';
+      }
 
       const status = this.resolveStatus(meta);
       ranked.push({ entry, dist, vis, status });
     }
 
     // Clutter: only closest MAX_FULL_LABELS get full nameplates; others far→icon-only or hidden
+    // Live interactives are always included in the full-name set.
     ranked.sort((a, b) => a.dist - b.dist);
     const fullIds = new Set(
       ranked
@@ -152,6 +161,11 @@ export class BuildingSystem {
         .slice(0, MAX_FULL_LABELS)
         .map((r) => r.entry.meta.id),
     );
+    for (const r of ranked) {
+      if (isLiveInteractionId(r.entry.meta.id) && r.vis !== 'far') {
+        fullIds.add(r.entry.meta.id);
+      }
+    }
 
     // Soft screen-space separation for near-overlapping labels
     const placed: { x: number; y: number }[] = [];
