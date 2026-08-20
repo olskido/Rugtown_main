@@ -97,6 +97,9 @@ export interface ServerProgressionSnapshot {
   migrated_from_local: boolean;
   /** Phase 13: 1 = legacy soft curve, 2 = Chapter One slower curve. */
   progression_curve_version?: number;
+  /** Phase 16: separate daily/weekly point buckets. */
+  daily_points?: number;
+  weekly_points?: number;
   updated_at: string;
 }
 

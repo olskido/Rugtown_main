@@ -26,6 +26,9 @@ export interface RugtownProgress {
   completedMissions: string[];
   visitedInteriors: string[];
   activeMission: string | null;
+  /** Local cache only — server (hidden_quest_state table) is authoritative for logged-in players. */
+  hiddenQuestsDiscovered: string[];
+  hiddenQuestsCompleted: string[];
 }
 
 const STORAGE_KEY = 'rugtown:progress:v1';
@@ -35,6 +38,8 @@ const DEFAULT_PROGRESS: RugtownProgress = {
   completedMissions: [],
   visitedInteriors: [],
   activeMission: null,
+  hiddenQuestsDiscovered: [],
+  hiddenQuestsCompleted: [],
 };
 
 function hasStorage(): boolean {
@@ -61,6 +66,12 @@ export function loadProgress(): RugtownProgress {
         ? parsed.visitedInteriors.filter((x): x is string => typeof x === 'string')
         : [],
       activeMission: typeof parsed.activeMission === 'string' ? parsed.activeMission : null,
+      hiddenQuestsDiscovered: Array.isArray(parsed.hiddenQuestsDiscovered)
+        ? parsed.hiddenQuestsDiscovered.filter((x): x is string => typeof x === 'string')
+        : [],
+      hiddenQuestsCompleted: Array.isArray(parsed.hiddenQuestsCompleted)
+        ? parsed.hiddenQuestsCompleted.filter((x): x is string => typeof x === 'string')
+        : [],
     };
   } catch {
     return { ...DEFAULT_PROGRESS };

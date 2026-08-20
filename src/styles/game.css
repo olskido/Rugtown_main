@@ -2,24 +2,19 @@
   game.css
   ────────
   HUD overlay styles for the GamePage world view.
-
-  Visual source:
-  - Image 2 (gameplay-master): layout, proportions, panel positions
-  - Image 3 (ui-bible): border style, gold system, panel anatomy
-
-  Panel anatomy from Image 3:
-  ┌─◆─────────────────────────────◆─┐  ← outer border: 2px solid gold-dim
-  │  [████████ HEADER BAR ████████]  │  ← gold gradient fill, Cinzel font
-  │  inner content area               │  ← dark bg, inset border
-  └─◆─────────────────────────────◆─┘  ← bottom ornament
-       ↑ corner ◆ rotated 45°
-
-  Colors extracted from references:
-  - Panel bg:        #090c0f (near-black)
-  - Border gold:     #9a6e1e dim / #c8902a mid / #e8b84b bright
-  - Header gold:     gradient #1e1400 → #3a2400
-  - Text gold:       #d4a040 headings, #c8b89a body
 */
+
+:root {
+  --rt-desktop-pad: clamp(20px, 2.2vw, 40px);
+  --rt-panel-tl: min(178px, 42vw);
+  --rt-panel-tr: min(210px, 46vw);
+}
+
+@media (max-width: 768px) {
+  :root {
+    --rt-desktop-pad: 12px;
+  }
+}
 
 /* ══════════════════════════════════════════════════════════════
    GAME PAGE ROOT
@@ -346,10 +341,10 @@
    Constrained to viewport so the mission list scrolls at 100% zoom
    ══════════════════════════════════════════════════════════════ */
 .hud-panel--tl {
-  top: 16px;
-  left: 16px;
+  top: var(--rt-desktop-pad);
+  left: var(--rt-desktop-pad);
   width: var(--rt-panel-tl, min(178px, 42vw));
-  max-height: calc(100dvh - 32px - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - (var(--rt-desktop-pad) * 2) - env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -862,8 +857,8 @@
    Image 3: ornate panel
    ══════════════════════════════════════════════════════════════ */
 .hud-panel--tr {
-  top: 16px;
-  right: 16px;
+  top: var(--rt-desktop-pad);
+  right: var(--rt-desktop-pad);
   width: var(--rt-panel-tr, min(210px, 46vw));
 }
 
@@ -2160,8 +2155,8 @@
    ══════════════════════════════════════════════════════════════ */
 .chat-panel {
   bottom: 90px;
-  left: 16px;
-  width: 300px;
+  left: var(--rt-desktop-pad);
+  width: min(300px, calc(100vw - var(--rt-desktop-pad) * 2));
   display: flex;
   flex-direction: column;
   animation: chat-panel-in 0.18s ease both;
@@ -2866,6 +2861,385 @@
 .leaderboard-row--you .leaderboard-row__name {
   color: #e8d8c0;
   font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PANEL — shared full-screen dialog shell (Phase 2)
+   Reuses the .modal-overlay/.modal-panel visual language (same
+   blur/gold-border/pop-in chrome) under BEM-ish `.panel__*` names,
+   because PointsLeaderboardPanel.tsx / MissionHQPanel.tsx were
+   authored against that naming. Kept as its own class family rather
+   than renaming those components onto .modal-*.
+   ══════════════════════════════════════════════════════════════ */
+.panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 4, 6, 0.78);
+  backdrop-filter: blur(3px);
+  pointer-events: all;
+  animation: modal-fade-in 0.2s ease forwards;
+}
+
+.panel {
+  position: relative;
+  width: min(420px, 92vw);
+  max-height: min(88dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(7, 10, 14, 0.98);
+  border: 2px solid #9a6e1e;
+  box-shadow:
+    inset 0 0 0 1px rgba(200, 144, 42, 0.18),
+    inset 0 0 0 3px rgba(0, 0, 0, 0.6),
+    0 0 2px rgba(232, 184, 75, 0.5),
+    0 0 60px rgba(200, 144, 42, 0.15),
+    0 0 90px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  animation: modal-pop-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.panel--leaderboard { width: min(400px, 92vw); }
+.panel--missionhq   { width: min(460px, 94vw); }
+
+.panel__header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px 9px;
+  background: linear-gradient(180deg, #2a1800 0%, #1a1000 60%, transparent 100%);
+  border-top: 2px solid #c8902a;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.25);
+  margin-top: -2px;
+}
+
+.panel__header-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  background: rgba(200, 144, 42, 0.1);
+  border: 1px solid rgba(200, 144, 42, 0.35);
+  border-radius: 50%;
+  box-shadow: 0 0 10px rgba(200, 144, 42, 0.15);
+}
+
+.panel__title {
+  flex: 1;
+  min-width: 0;
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #e8b84b;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(232, 184, 75, 0.3);
+  margin: 0;
+}
+
+.panel__close {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(200, 144, 42, 0.12);
+  border: 1px solid rgba(200, 144, 42, 0.55);
+  border-radius: 50%;
+  color: #e8b84b;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+
+.panel__close:hover {
+  background: rgba(200, 144, 42, 0.28);
+  color: #ffe6a0;
+  box-shadow: 0 0 12px rgba(200, 144, 42, 0.35);
+  transform: scale(1.06);
+}
+
+/* ── Leaderboard panel — additions on top of the pre-existing
+   .leaderboard-tabs/.leaderboard-tab/.leaderboard-list/.leaderboard-row
+   rules above, which PointsLeaderboardPanel.tsx also uses. ── */
+.leaderboard-row {
+  grid-template-columns: 26px 1fr auto auto;
+}
+
+.leaderboard-row--player {
+  background: rgba(200, 144, 42, 0.1);
+  border-bottom: none;
+}
+
+.leaderboard-row--player .leaderboard-row__name {
+  color: #e8d8c0;
+  font-weight: 700;
+}
+
+.leaderboard-row--podium .leaderboard-row__rank {
+  color: #e8b84b;
+}
+
+.leaderboard-row__you {
+  color: #e8b84b;
+  font-weight: 700;
+  font-size: 9px;
+}
+
+.leaderboard-row__level {
+  font-size: 9px;
+  color: #8a9aa0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.leaderboard-row__points {
+  font-weight: 600;
+  color: #e8b84b;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.leaderboard-row__unit {
+  font-size: 8px;
+  color: #9a8a6a;
+  font-weight: 400;
+}
+
+.leaderboard-notice {
+  padding: 8px 12px;
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  line-height: 1.5;
+  color: #8a7a5c;
+  text-align: center;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.1);
+}
+
+.leaderboard-player-rank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(200, 144, 42, 0.08);
+  border-bottom: 1px solid rgba(200, 144, 42, 0.18);
+}
+
+.leaderboard-player-rank__label {
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8a7a5c;
+}
+
+.leaderboard-player-rank__badge {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.leaderboard-player-rank__pts {
+  margin-left: auto;
+  font-weight: 700;
+  color: #e8b84b;
+}
+
+.leaderboard-footer {
+  padding: 7px 12px;
+  font-family: 'Cinzel', serif;
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  color: #6a5a42;
+  text-align: center;
+  border-top: 1px solid rgba(200, 144, 42, 0.12);
+}
+
+/* ── Mission HQ panel ── */
+.missionhq-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.12);
+}
+
+.missionhq-tab {
+  flex: 1;
+  padding: 7px 4px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6a5a42;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.missionhq-tab:hover {
+  color: #c8b89a;
+}
+
+.missionhq-tab--active {
+  color: #e8b84b;
+  border-bottom-color: #c8902a;
+}
+
+.missionhq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.missionhq-list::-webkit-scrollbar { width: 4px; }
+.missionhq-list::-webkit-scrollbar-thumb { background: #7a5c1e; }
+
+.missionhq-empty {
+  padding: 16px 10px;
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  color: #6a5a42;
+  text-align: center;
+}
+
+.missionhq-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.08);
+}
+
+.missionhq-row--claimed {
+  opacity: 0.55;
+}
+
+.missionhq-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.missionhq-row__title {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e8d8c0;
+}
+
+.missionhq-row__desc {
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  color: #8a7a5c;
+  margin: 2px 0 5px;
+}
+
+.missionhq-row__progress-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(200, 144, 42, 0.12);
+  overflow: hidden;
+}
+
+.missionhq-row__progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #9a6e1e, #e8b84b);
+  transition: width 0.2s ease;
+}
+
+.missionhq-row__progress-label {
+  margin-top: 3px;
+  font-size: 8px;
+  color: #6a5a42;
+}
+
+.missionhq-row__rewards {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 9px;
+  color: #e8b84b;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.missionhq-row__claim {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0a0c0e;
+  background: #e8b84b;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s;
+}
+
+.missionhq-row__claim:hover:not(:disabled) {
+  background: #ffd873;
+  transform: scale(1.03);
+}
+
+.missionhq-row__claim:disabled {
+  background: rgba(200, 144, 42, 0.15);
+  color: #6a5a42;
+  cursor: default;
+}
+
+.missionhq-progress {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.missionhq-progress__level {
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8b84b;
+}
+
+.missionhq-progress__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  color: #c8b89a;
+}
+
+.missionhq-progress__hint {
+  margin: 8px 0 0;
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  line-height: 1.6;
+  color: #6a5a42;
+}
+
+@media (max-width: 600px) {
+  .panel--leaderboard,
+  .panel--missionhq {
+    width: 96vw;
+    max-height: 90dvh;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -6505,5 +6879,116 @@
   z-index: 5;
   mix-blend-mode: multiply;
   pointer-events: none;
+}
+
+/* ── RugTown Guild / Vault overlays ── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--rt-desktop-pad);
+  background: rgba(4, 8, 10, 0.72);
+  pointer-events: all;
+}
+
+.guild-panel,
+.vault-panel {
+  width: min(420px, 100%);
+  max-height: min(86vh, 640px);
+  overflow-y: auto;
+}
+
+.guild-panel__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 14px;
+  font-size: 11px;
+  color: #c8b89a;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.15);
+}
+
+.guild-panel__tabs {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+}
+
+.guild-tab {
+  flex: 1;
+  padding: 8px 10px;
+  font-family: Cinzel, serif;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9a8a6a;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(200, 144, 42, 0.25);
+  cursor: pointer;
+}
+
+.guild-tab--active {
+  color: #e8b84b;
+  border-color: #c8902a;
+  background: rgba(42, 24, 0, 0.55);
+}
+
+.guild-contract-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guild-contract {
+  padding: 10px 12px;
+  border: 1px solid rgba(200, 144, 42, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.guild-contract__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e8b84b;
+  font-size: 12px;
+}
+
+.guild-contract__desc,
+.guild-contract__progress {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #c8b89a;
+}
+
+.guild-contract__reward {
+  color: #d4a040;
+  white-space: nowrap;
+}
+
+.vault-grid {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.vault-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #c8b89a;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.1);
+  padding-bottom: 6px;
+}
+
+.vault-row span:last-child {
+  color: #e8b84b;
+  text-align: right;
 }
 

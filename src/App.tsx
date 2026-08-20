@@ -5,6 +5,7 @@ import './styles/landing.css';
 import './styles/game.css';
 import './styles/auth.css';
 import { LandingPage } from './components/LandingPage';
+import { UsernameOnboardingPage } from './components/UsernameOnboardingPage';
 import { AuthPage } from './components/AuthPage';
 import { AuthCallbackPage } from './components/AuthCallbackPage';
 import { OutfitSelectPage } from './components/OutfitSelectPage';
@@ -18,6 +19,7 @@ import {
   fetchInventoryItemIds,
   fetchDistrictUnlockIds,
   saveUsername,
+  getRugtownProfileState,
   type AuthUserLike,
 } from './lib/profile';
 import {
@@ -32,11 +34,12 @@ import { WORLD_H as WORLD_HEIGHT, WORLD_W as WORLD_WIDTH } from './game/world/Ne
 /*
   App.tsx — routed screens + auth hydration + session restore on refresh.
 
-  /                 Landing
-  /auth             Sign in / sign up
-  /auth/callback    Email confirmation
-  /character        Nickname / outfit gate
-  /play             Game (restores last safe position from local session)
+  /                     Landing
+  /auth                 Sign in with Google / Email
+  /auth/callback        OAuth / Email confirmation callback
+  /onboarding/username  Username selection for new Google/Email players
+  /character            Nickname / outfit gate
+  /play                 Game (restores last safe position from local session)
 */
 
 type AuthHydration = 'loading' | 'authenticated' | 'guest' | 'error';
@@ -48,6 +51,7 @@ interface AuthUser {
 
 function pathToRoute(pathname: string): RugTownRoute {
   if (pathname.startsWith('/auth/callback')) return '/auth/callback';
+  if (pathname.startsWith('/onboarding/username')) return '/onboarding/username';
   if (pathname.startsWith('/auth')) return '/auth';
   if (pathname.startsWith('/character')) return '/character';
   if (pathname.startsWith('/play')) return '/play';
@@ -65,6 +69,8 @@ export default function App() {
   const [initialBadgeIds, setInitialBadgeIds] = useState<string[]>([]);
   const [initialOwnedItemIds, setInitialOwnedItemIds] = useState<string[]>([]);
   const [initialDistrictIds, setInitialDistrictIds] = useState<string[]>([]);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true);
   const [authCallbackError, setAuthCallbackError] = useState<string | null>(null);
   const [restorePosition, setRestorePosition] = useState<{ x: number; y: number } | null>(null);
   const [routeReady, setRouteReady] = useState(false);
@@ -120,32 +126,71 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadUserData = async (sUser: AuthUserLike): Promise<void> => {
-      if (loadedUserIdRef.current === sUser.id) return;
+    const loadUserData = async (sUser: AuthUserLike): Promise<{ onboardingCompleted: boolean }> => {
+      if (loadedUserIdRef.current === sUser.id) {
+        return { onboardingCompleted };
+      }
       loadedUserIdRef.current = sUser.id;
 
       const emailFallback = sUser.email?.split('@')[0] ?? 'Degen';
       try {
         const [profile, badgeIds, itemIds, districtIds] = await Promise.all([
-          fetchOrCreateProfile(sUser),
+          getRugtownProfileState().then(async (state) => {
+            if (state) return state;
+            const legacy = await fetchOrCreateProfile(sUser);
+            if (!legacy) return null;
+            return {
+              id: legacy.id,
+              username: legacy.username,
+              displayName: legacy.display_name,
+              onboardingCompleted: legacy.onboarding_completed ?? true,
+              walletAddress: legacy.wallet_address ?? null,
+              rep: legacy.rep,
+            };
+          }),
           fetchUserBadgeIds(sUser.id),
           fetchInventoryItemIds(sUser.id),
           fetchDistrictUnlockIds(sUser.id),
         ]);
-        if (cancelled) return;
+        if (cancelled) return { onboardingCompleted: true };
 
         if (profile?.username) setPlayerName(profile.username);
         else setPlayerName(prev => prev || emailFallback);
 
-        if (profile) setInitialRep(profile.rep);
+        const completed = profile?.onboardingCompleted !== false;
+        if (profile) {
+          setInitialRep(profile.rep);
+          setWalletAddress(profile.walletAddress ?? null);
+          setOnboardingCompleted(completed);
+        }
+        // Phase 16: if the server returned full progression, seed ProgressionService
+        // immediately so the HUD shows accurate level/XP/points from first render
+        // rather than waiting for the game to boot and call get_my_progression.
+        if (
+          profile &&
+          (profile.lifetimeXp != null || profile.level != null || profile.rugPoints != null)
+        ) {
+          const { progressionService } = await import('./game/progression/ProgressionService');
+          progressionService.syncFromServerSnapshot({
+            lifetime_xp:         profile.lifetimeXp,
+            level:               profile.level,
+            rep:                 profile.rep,
+            // Map Phase 16 points fields to the shape syncFromServerSnapshot expects
+            rug_points:          profile.rugPoints,
+            daily_points:        profile.dailyPoints,
+            weekly_points:       profile.weeklyPoints,
+          });
+        }
         if (badgeIds.length) setInitialBadgeIds(badgeIds);
         if (itemIds.length) setInitialOwnedItemIds(itemIds);
         if (districtIds.length) setInitialDistrictIds(districtIds);
+        return { onboardingCompleted: completed };
       } catch {
         if (!cancelled) {
           loadedUserIdRef.current = null;
           setPlayerName(prev => prev || emailFallback);
         }
+        return { onboardingCompleted: true };
       }
     };
 
@@ -160,7 +205,11 @@ export default function App() {
       }
     };
 
-    const finishHydration = (next: AuthHydration, uid: string | null) => {
+    const finishHydration = (
+      next: AuthHydration,
+      uid: string | null,
+      profileOnboardingComplete = true,
+    ) => {
       if (cancelled) return;
       applyLocalSession(uid);
       setAuthHydration(next);
@@ -169,8 +218,15 @@ export default function App() {
         didRestoreRouteRef.current = true;
         const session = loadRugTownSession(uid);
         const urlRoute = pathToRoute(location.pathname);
-        // Prefer explicit deep link; else restore last entered-game session.
-        if (urlRoute === '/play' || (session?.enteredGame && session.route === '/play' && urlRoute === '/')) {
+
+        if (
+          next === 'authenticated'
+          && !profileOnboardingComplete
+          && urlRoute !== '/onboarding/username'
+          && urlRoute !== '/wallet'
+        ) {
+          navigate('/onboarding/username', { replace: true });
+        } else if (urlRoute === '/play' || (session?.enteredGame && session.route === '/play' && urlRoute === '/')) {
           navigate('/play', { replace: true });
         } else if (urlRoute === '/' && session?.route && session.route !== '/' && session.enteredGame) {
           navigate(session.route === '/character' ? '/character' : '/play', { replace: true });
@@ -188,8 +244,8 @@ export default function App() {
       if (cancelled) return;
       if (session?.user) {
         setUser({ id: session.user.id, email: session.user.email ?? null });
-        void loadUserData(session.user).finally(() => {
-          finishHydration('authenticated', session.user.id);
+        void loadUserData(session.user).then(({ onboardingCompleted: completed }) => {
+          finishHydration('authenticated', session.user.id, completed);
         });
       } else {
         finishHydration('guest', null);
@@ -243,18 +299,61 @@ export default function App() {
   }, [resetGuestProgress, navigate]);
 
   const handleEnterRugtown = useCallback(() => {
-    navigate(isSupabaseConfigured ? '/auth' : '/character');
-  }, [navigate]);
+    if (user && playerName) {
+      navigate('/play');
+      return;
+    }
+    if (isSupabaseConfigured) {
+      navigate('/auth');
+      return;
+    }
+    navigate('/character');
+  }, [navigate, user, playerName]);
+
+  const handleUsernameComplete = useCallback(
+    (username: string) => {
+      setPlayerName(username);
+      setOnboardingCompleted(true);
+      saveRugTownSession({ route: '/character', playerName: username }, user?.id ?? null);
+      navigate('/character');
+    },
+    [navigate, user?.id],
+  );
 
   const handleAuthContinue = useCallback(() => {
-    saveRugTownSession({ route: '/character' }, user?.id ?? null);
-    navigate('/character');
-  }, [navigate, user?.id]);
+    // Defense in depth: a signed-in user can reach /auth's "Continue" button
+    // directly (browser back, bookmark) outside the OAuth-callback path
+    // below. onboardingCompleted is authoritative server state by this point
+    // (hydration has already completed, since this route only renders once
+    // routeReady is true), so honour it here too -- never send an
+    // incomplete profile to the game.
+    const dest = onboardingCompleted ? '/character' : '/onboarding/username';
+    if (dest === '/character') saveRugTownSession({ route: '/character' }, user?.id ?? null);
+    navigate(dest);
+  }, [navigate, user?.id, onboardingCompleted]);
 
-  const handleAuthCallbackSuccess = useCallback(() => {
+  /**
+   * OAuth (and email-confirmation-link) callback success. `needsOnboarding`
+   * is computed by AuthCallbackPage from a fresh, direct
+   * getRugtownProfileState() call made right after the session was
+   * established -- NOT from this component's own hydration state, which
+   * races the OAuth redirect: on first return from Google, the initial
+   * getSession() resolves with no session (the PKCE code hasn't been
+   * exchanged yet), so the one-shot post-hydration onboarding check fires
+   * early as a 'guest' and is never re-armed once the real session lands via
+   * SIGNED_IN. See the Phase 1 report for the full trace. Routing directly
+   * from the callback's own fresh profile check sidesteps that race
+   * entirely instead of trying to re-time the existing hydration guard.
+   */
+  const handleAuthCallbackSuccess = useCallback((opts: { needsOnboarding: boolean }) => {
     setAuthCallbackError(null);
-    navigate('/auth', { replace: true });
-  }, [navigate]);
+    if (opts.needsOnboarding) {
+      navigate('/onboarding/username', { replace: true });
+    } else {
+      saveRugTownSession({ route: '/character' }, user?.id ?? null);
+      navigate('/character', { replace: true });
+    }
+  }, [navigate, user?.id]);
 
   const handleAuthCallbackFailure = useCallback((message: string) => {
     setAuthCallbackError(message);
@@ -284,25 +383,47 @@ export default function App() {
 
   const handleNameSelect = useCallback(
     (name: string) => {
-      setPlayerName(name);
+      const trimmed = name.trim();
+      // Only attempt a server rename when the name actually changed from the
+      // player's persisted username -- this field is pre-filled with it, and
+      // most returning players click through unchanged. Re-submitting the
+      // same value on every login used to fire a no-op update_player_username
+      // call each time (see Phase 1 report: "Username persistence").
+      const changed = user?.id && trimmed && trimmed !== playerName;
+
+      setPlayerName(trimmed || playerName);
       saveRugTownSession({
         route: '/play',
         enteredGame: true,
-        playerName: name,
+        playerName: trimmed || playerName,
       }, user?.id ?? null);
       try {
         sessionStorage.setItem('rugtown:appearance-saved', '1');
         sessionStorage.setItem('rugtown:panel-character', '1');
       } catch { /* ignore */ }
-      if (user?.id && name.trim()) {
-        saveUsername(user.id, name.trim()).catch(() => {});
+
+      if (changed && user?.id) {
+        void saveUsername(user.id, trimmed).then((result) => {
+          if (!result.ok) {
+            // Server rejected the rename (taken/cooldown/etc.) -- revert the
+            // locally-displayed name to the last known-good server value
+            // rather than showing a name that isn't actually persisted.
+            console.warn('[username] rename rejected:', result.reason);
+            setPlayerName(playerName);
+          }
+        });
       }
+
       navigate('/play');
     },
-    [navigate, user],
+    [navigate, user, playerName],
   );
 
   const handleLogout = useCallback(async () => {
+    // Flush any pending debounced server sync before signing out so progress
+    // is not lost if the sync timer hasn't fired yet.
+    const { progressionService } = await import('./game/progression/ProgressionService');
+    progressionService.flushServerSync();
     await supabase?.auth.signOut();
     setUser(null);
     resetGuestProgress();
@@ -334,6 +455,13 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage onEnterRugtown={handleEnterRugtown} />} />
+      <Route path="/wallet" element={<Navigate to="/auth" replace />} />
+      <Route
+        path="/onboarding/username"
+        element={(
+          <UsernameOnboardingPage onComplete={handleUsernameComplete} />
+        )}
+      />
       <Route
         path="/auth"
         element={(
@@ -380,6 +508,7 @@ export default function App() {
             initialOwnedItemIds={initialOwnedItemIds}
             initialDistrictIds={initialDistrictIds}
             initialPosition={restorePosition}
+            walletAddress={walletAddress}
             onLogout={handleLogout}
           />
         )}

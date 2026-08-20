@@ -9,7 +9,7 @@
  * to do with the returned data.
  */
 
-import { supabase, type DbProfile } from './supabase';
+import { supabase, type DbProfile, type RugtownProfileState } from './supabase';
 
 /* ─── profile ─────────────────────────────────────────────────── */
 
@@ -27,6 +27,86 @@ export async function fetchProfile(userId: string): Promise<DbProfile | null> {
     .single();
   if (error || !data) return null;
   return data as DbProfile;
+}
+
+/** Server-authoritative profile + onboarding gate (Phase 15). */
+export async function getRugtownProfileState(): Promise<RugtownProfileState | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('get_rugtown_profile_state');
+  if (error) {
+    // Fallback for databases without Phase 15 migration yet.
+    const { data: session } = await supabase.auth.getSession();
+    const uid = session.session?.user?.id;
+    if (!uid) return null;
+    const profile = await fetchProfile(uid);
+    if (!profile) return null;
+    return {
+      id: profile.id,
+      username: profile.username,
+      displayName: profile.display_name,
+      onboardingCompleted: profile.onboarding_completed ?? true,
+      walletAddress: profile.wallet_address ?? null,
+      rep: profile.rep,
+    };
+  }
+  if (!data || typeof data !== 'object') return null;
+  const o = data as Record<string, unknown>;
+  return {
+    id: String(o.id ?? ''),
+    username: String(o.username ?? ''),
+    displayName: (o.displayName ?? o.display_name ?? null) as string | null,
+    onboardingCompleted: o.onboardingCompleted === true || o.onboarding_completed === true,
+    walletAddress: (o.walletAddress ?? o.wallet_address ?? null) as string | null,
+    rep: Number(o.rep ?? 0),
+    level: typeof o.level === 'number' ? o.level : undefined,
+    // Phase 16 fields — present when the migration has been applied.
+    lifetimeXp: typeof o.lifetimeXp === 'number' ? o.lifetimeXp : undefined,
+    rugPoints: typeof o.rugPoints === 'number' ? o.rugPoints : undefined,
+    dailyPoints: typeof o.dailyPoints === 'number' ? o.dailyPoints : undefined,
+    weeklyPoints: typeof o.weeklyPoints === 'number' ? o.weeklyPoints : undefined,
+    progressionCurveVersion: typeof o.progressionCurveVersion === 'number' ? o.progressionCurveVersion : undefined,
+    streakCurrent: (o.streakCurrent ?? null) as number | null | undefined,
+    streakLongest: (o.streakLongest ?? null) as number | null | undefined,
+    streakLastDailyKey: (o.streakLastDailyKey ?? null) as string | null | undefined,
+  };
+}
+
+export async function checkUsernameAvailable(username: string): Promise<boolean> {
+  if (!supabase) return false;
+  const trimmed = username.trim();
+  if (!trimmed) return false;
+  const { data, error } = await supabase.rpc('check_username_available', {
+    p_username: trimmed,
+  });
+  if (error) {
+    // Pre-migration: naive client check (non-authoritative preview only).
+    const { data: rows } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('username', trimmed)
+      .limit(1);
+    return !rows?.length;
+  }
+  return data === true;
+}
+
+export async function createRugtownProfile(
+  username: string,
+): Promise<{ ok: boolean; username?: string; error?: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase not configured.' };
+  const trimmed = username.trim();
+  const { data, error } = await supabase.rpc('create_rugtown_profile', {
+    p_username: trimmed,
+  });
+  if (error) {
+    return { ok: false, error: error.message };
+  }
+  if (data && typeof data === 'object') {
+    const o = data as Record<string, unknown>;
+    if (o.ok === false) return { ok: false, error: String(o.error ?? 'Username unavailable.') };
+    return { ok: true, username: String(o.username ?? trimmed) };
+  }
+  return { ok: true, username: trimmed };
 }
 
 /** Minimal shape of the authenticated user needed to seed a profile. Matches
@@ -107,30 +187,49 @@ export async function fetchOrCreateProfile(user: AuthUserLike): Promise<DbProfil
   return await fetchProfile(user.id);
 }
 
+export interface SaveUsernameResult {
+  ok: boolean;
+  /** Present on failure: 'cooldown' | 'taken' | 'reserved' | 'invalid_length' | 'invalid_chars' | 'rate_limited' | a transport error message. */
+  reason?: string;
+}
+
 /**
  * Persist the player's chosen display handle via server-authoritative
  * update_player_username when available; fall back to direct update only
  * if the RPC is missing (pre-10J databases).
+ *
+ * Unlike the pre-Phase-1 version, this inspects the RPC's own `{ok, reason}`
+ * response body, not just transport-level errors -- update_player_username
+ * returns a normal 200 response with `ok: false` for a cooldown or username
+ * collision (it does not raise a SQL exception for those), so a caller that
+ * only checked `error` would silently treat a rejected rename as a success.
  */
-export async function saveUsername(userId: string, username: string): Promise<void> {
-  if (!supabase) return;
+export async function saveUsername(userId: string, username: string): Promise<SaveUsernameResult> {
+  if (!supabase) return { ok: false, reason: 'Supabase not configured.' };
   const trimmed = username.trim();
-  if (!trimmed) return;
+  if (!trimmed) return { ok: false, reason: 'Username is empty.' };
 
-  const { error: rpcError } = await supabase.rpc('update_player_username', {
+  const { data, error: rpcError } = await supabase.rpc('update_player_username', {
     p_username: trimmed,
   });
-  if (!rpcError) return;
+  if (!rpcError) {
+    if (data && typeof data === 'object') {
+      const o = data as Record<string, unknown>;
+      if (o.ok === false) return { ok: false, reason: typeof o.reason === 'string' ? o.reason : 'Username rejected.' };
+    }
+    return { ok: true };
+  }
 
   const missing =
     rpcError.code === 'PGRST202' ||
     /does not exist|function .* does not exist|schema cache/i.test(rpcError.message ?? '');
-  if (!missing) return;
+  if (!missing) return { ok: false, reason: rpcError.message };
 
-  await supabase
+  const { error: updateError } = await supabase
     .from('profiles')
     .update({ username: trimmed, display_name: trimmed })
     .eq('id', userId);
+  return updateError ? { ok: false, reason: updateError.message } : { ok: true };
 }
 
 /* ─── badges ──────────────────────────────────────────────────── */

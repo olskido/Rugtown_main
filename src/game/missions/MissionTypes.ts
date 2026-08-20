@@ -4,14 +4,35 @@
  */
 
 export type MissionCategory =
-  | 'onboarding'
-  | 'story'
+  | 'exploration'
+  | 'social'
+  | 'discovery'
+  | 'activity'
+  | 'landmark'
+  | 'challenge'
+  | 'chain'
+  | 'event'
+  | 'hidden'
   | 'daily'
   | 'weekly'
+  | 'milestone'
+  | 'onboarding'
+  | 'story'
   | 'party'
   | 'city_event'
-  | 'social'
-  | 'achievement';
+  | 'achievement'
+  | 'EXPLORATION'
+  | 'SOCIAL'
+  | 'DISCOVERY'
+  | 'ACTIVITY'
+  | 'LANDMARK'
+  | 'CHALLENGE'
+  | 'CHAIN'
+  | 'EVENT'
+  | 'HIDDEN'
+  | 'DAILY'
+  | 'WEEKLY'
+  | 'MILESTONE';
 
 export type ObjectiveKind =
   | 'enter_building'
@@ -28,7 +49,8 @@ export type ObjectiveKind =
   | 'party_or_solo_action'
   | 'visit_any_of'
   | 'accept_mission'
-  | 'walk_distance';
+  | 'walk_distance'
+  | 'hidden_discovery';
 
 export interface MissionObjectiveDef {
   id: string;
@@ -53,6 +75,9 @@ export interface MissionDefinition {
   objectiveHint?: string;
   rewardXp: number;
   rewardRep: number;
+  rewardPoints?: number;
+  isHidden?: boolean;
+  discoveryTrigger?: string;
   /** Extra cosmetic / title unlock ids (client display; server grants via catalog) */
   titleUnlockId?: string | null;
   achievementProgressId?: string | null;
@@ -81,6 +106,9 @@ export interface MissionProgress {
   objectiveHint?: string;
   rewardXp: number;
   rewardRep: number;
+  rewardPoints?: number;
+  isHidden?: boolean;
+  discovered?: boolean;
   objectives: MissionObjectiveProgress[];
   category: MissionCategory;
 }

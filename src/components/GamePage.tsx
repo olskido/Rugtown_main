@@ -17,9 +17,12 @@ import { AlphaLoungePanel } from './AlphaLoungePanel';
 import { emitGameplayEvent } from '../game/missions/MissionEventBridge';
 import { HudCharacterPortrait } from './HudCharacterPortrait';
 import { fetchTrendingSolanaTokens, type MarketToken } from '../services/dexscreener';
-import { saveRep, saveBadge, saveInventoryItem, saveDistrictUnlock, updateLastSeen } from '../lib/profile';
+import { saveBadge, saveInventoryItem, saveDistrictUnlock, updateLastSeen } from '../lib/profile';
 import { loadProgress, patchProgress } from '../lib/progress';
 import { saveRugTownSession } from '../game/persistence/RugTownSessionStore';
+import { discoverHiddenQuest, completeHiddenQuest } from '../lib/hiddenQuests';
+import { recordDailyParticipation, recordActivityHeartbeat, getMyStreak } from '../lib/activity';
+import { MissionHQPanel } from './MissionHQPanel';
 import {
   pickLivingCityEvent,
   LIVING_CITY_EVENT_MIN_GAP,
@@ -38,6 +41,11 @@ import { WorldEventHud } from './events/WorldEventHud';
 import { DayNightOverlay } from './world/DayNightOverlay';
 import { TournamentCentrePanel } from './tournaments/TournamentCentrePanel';
 import { GuildPanel } from './guilds/GuildPanel';
+import { RugTownGuildPanel } from './guild/RugTownGuildPanel';
+import { QuestArchivePanel } from './QuestArchivePanel';
+import { reportGuildGameplayEvent } from '../lib/guild/GuildProgressBridge';
+import { recordRewardPoints, DEFAULT_MISSION_RP } from '../lib/rewards/RewardPointsService';
+import { shortenWalletAddress } from '../lib/wallet/SolanaWalletProviders';
 import { characterService } from '../lib/character';
 import { LevelUpToast } from './LevelUpToast';
 import { PlayerProfilePanel } from './PlayerProfilePanel';
@@ -76,6 +84,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { LEVEL_DEFINITIONS, type LevelObjectiveType } from '../game/levels/LevelDefinitions';
 import { notificationQueue } from '../lib/notificationQueue';
 import { NotificationBanner } from './NotificationBanner';
+import { PointsLeaderboardPanel } from './PointsLeaderboardPanel';
 
 /*
   GamePage.tsx
@@ -302,6 +311,7 @@ const ACTION_BAR_ITEMS = [
   { icon: '⏱', label: 'Events',      key: 'V' },
   { icon: '👥', label: 'Social',      key: 'F' },
   { icon: '⚔', label: 'Party',       key: 'P' },
+  { icon: '🏛️', label: 'Mission HQ',  key: 'J' },
   { icon: '🏆', label: 'Leaderboard', key: 'L' },
   { icon: '💎', label: 'Holder',      key: 'H' },
   { icon: '🗺️',  label: 'Map',         key: 'M' },
@@ -325,26 +335,26 @@ const LANDMARK_COLORS: Record<string, string> = {
 
 /* ─── Interaction zone modal content — flavor text only, no backend ─── */
 const ZONE_INFO: Record<string, { title: string; sub: string }> = {
-  fountain: { title: 'Spring Water', sub: 'Make a wish, degen' },
-  market: { title: 'Meme Market', sub: 'Where bags are made and lost' },
-  market_shop: { title: 'Market Shop', sub: 'Browse only — no purchases' },
-  bridge: { title: 'Main Bridge', sub: 'Crossing into new districts' },
-  fame: { title: 'Hall of Fame', sub: 'Legends of RugTown' },
-  whale: { title: 'Whale Tower', sub: 'Watch the big wallets' },
-  notice: { title: 'Notice Board', sub: 'Missions hub + live notices' },
-  alpha: { title: 'Alpha Lounge', sub: 'Rumours without a token gate' },
-  cashback: { title: 'Holder Cashback Vault', sub: 'Locked until $RUGTOWN activation' },
-  arena: { title: 'Future Arena', sub: 'Training and preview only' },
-  coffee: { title: 'Coffee Shop', sub: 'Gossip and warm cups' },
-  government: { title: 'Government Quarter', sub: 'Civic notices and weekly cycles' },
-  trading_academy: { title: 'Trading Academy', sub: 'Lessons before leverage' },
-  financial_office: { title: 'Financial Office', sub: 'Progression ledgers' },
-  holder_bank: { title: 'Holder Bank', sub: 'Account preview — no wallet' },
-  research_observatory: { title: 'Research Observatory', sub: 'Event signals and clues' },
-  tournament_hall: { title: 'Tournament Hall', sub: 'Challenge desk' },
-  nft_gallery: { title: 'NFT Gallery', sub: 'Cosmetic exhibits only' },
-  nft_creator_studio: { title: 'NFT Creator Studio', sub: 'Appearance workshop' },
-  park: { title: 'Park Entrance', sub: 'Quiet green meet-up' },
+  fountain:             { title: 'Spring Water',        sub: 'The heart of RugTown — make your mark' },
+  market:               { title: 'Meme Market',         sub: 'Trends, gossip, and street-level alpha' },
+  market_shop:          { title: 'Market Stalls',       sub: 'Browse the city\'s active traders' },
+  bridge:               { title: 'Main Bridge',         sub: 'Crossing into new districts' },
+  fame:                 { title: 'Hall of Fame',        sub: '🏆 Leaderboard & Top 3 Champion Statues' },
+  whale:                { title: 'Whale Tower',         sub: 'Monument to RugTown\'s biggest players' },
+  notice:               { title: 'Notice Board',        sub: '📋 City missions, events & community leads' },
+  alpha:                { title: 'Alpha Club (Lv 30+)', sub: '🔒 Specialist lounge — advanced leads & quests' },
+  cashback:             { title: 'Quest Archive',       sub: '📜 Completed missions, clues & hidden quest log' },
+  arena:                { title: 'Challenge Arena',     sub: '⚔ Timed trials, speed runs & gauntlets' },
+  coffee:               { title: 'Social Hub & Café',  sub: '☕ Gather, chat, and meet the city' },
+  government:           { title: 'Mission HQ',          sub: '🎯 Chapter missions, assignments & trials' },
+  trading_academy:      { title: 'Trading Academy',     sub: 'Lessons before leverage' },
+  financial_office:     { title: 'Financial Office',    sub: 'Progression ledgers & rep records' },
+  holder_bank:          { title: 'Holder Bank',         sub: 'Account preview' },
+  research_observatory: { title: 'Research Observatory',sub: 'Event signals and hidden clues' },
+  tournament_hall:      { title: 'Tournament Hall',     sub: 'Challenge desk & weekly brackets' },
+  nft_gallery:          { title: 'NFT Gallery',         sub: 'Cosmetic exhibits only' },
+  nft_creator_studio:   { title: 'Creator Studio',      sub: 'Appearance workshop' },
+  park:                 { title: 'Park Entrance',       sub: 'Quiet green meet-up spot' },
 };
 
 const FAME_LEADERBOARD = [
@@ -731,10 +741,11 @@ interface GamePageProps {
   initialPosition?: { x: number; y: number } | null;
   /** Called by the Settings sign-out button; only rendered when provided. */
   onLogout?: () => void;
+  walletAddress?: string | null;
 }
 
 /* ─── Component ─── */
-export function GamePage({ playerName, appearance, userEmail, userId, initialRep, initialBadgeIds, initialOwnedItemIds, initialDistrictIds, initialPosition = null, onLogout }: GamePageProps) {
+export function GamePage({ playerName, appearance, userEmail, userId, initialRep, initialBadgeIds, initialOwnedItemIds, initialDistrictIds, initialPosition = null, onLogout, walletAddress = null }: GamePageProps) {
   const mountRef   = useRef<HTMLDivElement>(null);
   const gameRef    = useRef<RugTownGame | null>(null);
   const sceneRef   = useRef<WorldScene | null>(null);
@@ -873,6 +884,13 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
 
   /* ── Phase 3 mission tracker + Phase 5 progress HUD ── */
   const [missionState, setMissionState] = useState<MissionRegistryState>(EMPTY_MISSION_STATE);
+  /* ── Phase 2: hidden quests — server-authoritative discover/complete + Mission HQ panel ── */
+  const [hiddenQuestState, setHiddenQuestState] = useState<{
+    discoveredIds: string[]; completedIds: string[]; discoveredCount: number; completedCount: number; totalCount: number;
+  }>({ discoveredIds: [], completedIds: [], discoveredCount: 0, completedCount: 0, totalCount: 0 });
+  const processedHiddenQuestDiscoveriesRef = useRef<Set<string>>(new Set());
+  const processedHiddenQuestCompletionsRef = useRef<Set<string>>(new Set());
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [expandedMapOpen, setExpandedMapOpen] = useState(false);
   const [mapFilters] = useState(() => loadMapFilters());
   const [currentDistrict, setCurrentDistrict] = useState('');
@@ -900,6 +918,8 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
   const [eventCentreOpen, setEventCentreOpen] = useState(false);
   const [tournamentCentreOpen, setTournamentCentreOpen] = useState(false);
   const [guildPanelOpen, setGuildPanelOpen] = useState(false);
+  const [rugtownGuildOpen, setRugtownGuildOpen] = useState(false);
+  const [vaultPanelOpen, setVaultPanelOpen] = useState(false);
   const [partyUnread, setPartyUnread] = useState(0);
   const [moderationOpen, setModerationOpen] = useState(false);
   const [reportPlayer, setReportPlayer] = useState<{ playerId: string; username: string } | null>(null);
@@ -916,6 +936,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
   const [achievementCentreOpen, setAchievementCentreOpen] = useState(false);
   const [titleLockerOpen, setTitleLockerOpen] = useState(false);
   const [seasonPassOpen, setSeasonPassOpen] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const progressionRef = useRef<PlayerProgression | null>(null);
 
   /* ── Local city chat (frontend-only, no backend) ── */
@@ -972,9 +993,13 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         setLevelUpQueue((q) => [...q, ...meta.levelUps!]);
       }
       sceneRef.current?.game?.registry.set('progressionDebug', progressionService.snapshot());
+      // Feeds MissionSystem.setPlayerLevel() (level-gated mission unlocks) and
+      // HiddenQuestDirector's LEVEL/COMPOUND triggers via WorldScene's registry listeners.
+      sceneRef.current?.game?.registry.set('playerLevel', next.level);
     });
 
     sceneRef.current?.game?.registry.set('progressionDebug', progressionService.snapshot());
+    sceneRef.current?.game?.registry.set('playerLevel', prog.level);
     if (import.meta.env.DEV) {
       (window as unknown as { __rugtownProgression?: typeof progressionService }).__rugtownProgression =
         progressionService;
@@ -999,6 +1024,20 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           setPartyUnread(partyService.getUnreadChatCount());
         });
         void characterService.initForAuthenticatedUser(userId);
+        // Phase 2: hydrate the server-authoritative streak so
+        // HiddenQuestDirector's STREAK/COMPOUND triggers have real data.
+        void getMyStreak().then((streak) => {
+          if (streak) sceneRef.current?.game?.registry.set('playerStreak', streak.currentStreak);
+        });
+        // Phase 2: bounded time-in-game reward. Server enforces the real
+        // cooldown (5 min) and daily cap (6/day) regardless of this
+        // interval's cadence -- only fires while the tab is actually visible
+        // so a backgrounded/idle tab earns nothing (brief: "reward active
+        // participation rather than an idle tab").
+        const heartbeatInterval = setInterval(() => {
+          if (document.visibilityState === 'visible') void recordActivityHeartbeat();
+        }, 3 * 60 * 1000);
+        heartbeatIntervalRef.current = heartbeatInterval;
       } else {
         socialService.clear();
         partyService.clear();
@@ -1019,6 +1058,10 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       unsub();
       unsubSocial();
       unsubParty();
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
       // Release Realtime subscriptions + end the authenticated session.
       void rewardService.endSession();
       rewardService.teardown();
@@ -1068,6 +1111,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
      row always sorts to its correct position as REP changes. Tabs are
      cosmetic for now (req. 7) — all three show the same local data. ── */
   const isLeaderboardOpen = activeAction === 'Leaderboard';
+  const isMissionHQOpen = activeAction === 'Mission HQ';
   const [leaderboardTab, setLeaderboardTab] = useState<LeaderboardTab>('Daily');
   const leaderboardRows = [
     ...LEADERBOARD_NPCS.map(e => ({ name: e.name, rep: e.rep, isPlayer: false, isOnline: false })),
@@ -1417,12 +1461,41 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           setDialogueClosing(false);
           setDialogue(null);
           setModalClosing(false);
-          setModalZone(zone.id);
-          setActiveAction(null); // only one overlay open at a time
+          setActiveAction(null);
           setWhaleAlertClosing(false);
           setWhaleAlert(null);
           setStatueModalClosing(false);
           setStatueModal(null);
+
+          if (zone.id === 'government') {
+            setModalZone(null);
+            setRugtownGuildOpen(true);
+            void reportGuildGameplayEvent({
+              eventType: 'discover_landmark',
+              ref: zone.id,
+              idempotencyKey: `landmark:${zone.id}:${new Date().toISOString().slice(0, 10)}`,
+            });
+            soundManager.play('modal');
+            return;
+          }
+          if (zone.id === 'cashback') {
+            setModalZone(null);
+            setVaultPanelOpen(true);
+            void reportGuildGameplayEvent({
+              eventType: 'discover_landmark',
+              ref: zone.id,
+              idempotencyKey: `landmark:${zone.id}:${new Date().toISOString().slice(0, 10)}`,
+            });
+            soundManager.play('modal');
+            return;
+          }
+
+          setModalZone(zone.id);
+          void reportGuildGameplayEvent({
+            eventType: 'discover_landmark',
+            ref: zone.id,
+            idempotencyKey: `landmark:${zone.id}:${new Date().toISOString().slice(0, 10)}`,
+          });
           soundManager.play('modal');
         });
 
@@ -1599,6 +1672,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           }
           progressionService.onPlayerInteracted(summary.playerId);
           void rewardService.reportObjective({ objectiveType: 'meet_player', ref: summary.playerId });
+          if (userId && summary.playerId !== userId) {
+            const day = new Date().toISOString().slice(0, 10);
+            void reportGuildGameplayEvent({
+              eventType: 'meet_player',
+              counterpartId: summary.playerId,
+              idempotencyKey: `social:${summary.playerId}:${day}`,
+            });
+          }
           if (rewardService.isServerAuthoritative()) {
             void rewardService.awardGameplay({
               sourceType: 'player_interact',
@@ -1641,6 +1722,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
               });
             }
             void rewardService.reportObjective({ objectiveType: 'visit_district', ref: payload.districtId });
+            if (userId) {
+              const day = new Date().toISOString().slice(0, 10);
+              void reportGuildGameplayEvent({
+                eventType: 'visit_district',
+                ref: payload.districtId,
+                idempotencyKey: `district:${payload.districtId}:${day}`,
+              });
+            }
           }
         });
         scene.events.on('landmark-discovered', (payload: { landmarkId: string; name: string }) => {
@@ -1663,6 +1752,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
               });
             }
             void rewardService.reportObjective({ objectiveType: 'visit_landmark', ref: payload.landmarkId });
+            if (userId) {
+              const day = new Date().toISOString().slice(0, 10);
+              void reportGuildGameplayEvent({
+                eventType: 'discover_landmark',
+                ref: payload.landmarkId,
+                idempotencyKey: `landmark:${payload.landmarkId}:${day}`,
+              });
+            }
           }
         });
         scene.events.on('interior-discovered', (payload: { interiorId: string; name: string }) => {
@@ -1752,6 +1849,39 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       const nextMissionState = reg.get('missionState') ?? EMPTY_MISSION_STATE;
       setMissionState({ ...EMPTY_MISSION_STATE, ...nextMissionState });
       setCurrentDistrict(reg.get('currentDistrict') ?? '');
+
+      // Phase 2: hidden quest discovery/completion — server-persist + reward,
+      // then toast. Deduped via ref so a mission re-publish never double-fires.
+      const hqState = reg.get('hiddenQuestState') as
+        | { discoveredIds: string[]; completedIds: string[]; discoveredCount: number; completedCount: number; totalCount: number; delta?: { discovered: string[]; completed: string[] } }
+        | undefined;
+      if (hqState) {
+        setHiddenQuestState({
+          discoveredIds: hqState.discoveredIds,
+          completedIds: hqState.completedIds,
+          discoveredCount: hqState.discoveredCount,
+          completedCount: hqState.completedCount,
+          totalCount: hqState.totalCount,
+        });
+        if (userId && hqState.delta) {
+          for (const questId of hqState.delta.discovered) {
+            if (processedHiddenQuestDiscoveriesRef.current.has(questId)) continue;
+            processedHiddenQuestDiscoveriesRef.current.add(questId);
+            void discoverHiddenQuest(questId);
+            showToast('🔎 Hidden quest discovered!');
+          }
+          for (const questId of hqState.delta.completed) {
+            if (processedHiddenQuestCompletionsRef.current.has(questId)) continue;
+            processedHiddenQuestCompletionsRef.current.add(questId);
+            void completeHiddenQuest(questId).then((result) => {
+              if (result.ok) {
+                showToast(`✨ Hidden quest complete! +${result.xpAwarded ?? 0} XP, +${result.repAwarded ?? 0} REP`);
+                void recordDailyParticipation();
+              }
+            });
+          }
+        }
+      }
 
       const px = reg.get('playerX') ?? 0;
       const py = reg.get('playerY') ?? 0;
@@ -1934,6 +2064,8 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       setEventCentreOpen(false);
       setTournamentCentreOpen(false);
       setGuildPanelOpen(false);
+      setRugtownGuildOpen(false);
+      setVaultPanelOpen(false);
     };
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -2521,6 +2653,18 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         soundManager.play('reward');
         showToast(`Mission complete: ${m.title} (+${xp} XP, +${repAmount} REP)`);
         appendChatMessage('City Feed', `✅ Mission complete: ${m.title} — +${xp} XP, +${repAmount} REP`, 'event');
+        if (userId) {
+          void reportGuildGameplayEvent({
+            eventType: 'complete_mission',
+            idempotencyKey: `mission:${m.id}:guild`,
+          });
+          void recordRewardPoints({
+            sourceType: 'mission',
+            sourceId: m.id,
+            basePoints: DEFAULT_MISSION_RP,
+            idempotencyKey: `mission:${m.id}:rp`,
+          });
+        }
       };
 
       if (rewardService.isServerAuthoritative() && m.id.startsWith('ch1_')) {
@@ -2549,7 +2693,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
       });
       progressionService.onMissionCompleted(m.id, m.rewardXp);
     }
-  }, [missionState.missions, showToast, appendChatMessage]);
+  }, [missionState.missions, showToast, appendChatMessage, userId]);
 
   /* ── Phase 5: persist REP locally so it survives reloads (guests too).
      Logged-in users additionally sync to Supabase in the effect below. ── */
@@ -2558,17 +2702,23 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     progressionService.syncRepAbsolute(rep);
   }, [rep]);
 
-  /* ── Debounced REP sync for logged-in users ──────────────────────
-     Saves profiles.rep to Supabase 3 s after the last REP change.
-     Guests (userId null/undefined) are never touched.
-     The cleanup cancels any pending save; if the value settles the
-     write fires once, not on every increment. ── */
+  /* ── Debounced REP sync for guests only ─────────────────────────
+     For authenticated users, REP is persisted server-side by
+     award_gameplay_reward / complete_chapter_mission RPCs.  The direct
+     profiles.update call is blocked by the profiles_protect_reward_columns
+     trigger on Phase 10G+ databases, so calling it for authenticated users
+     produces a silent no-op at best and a confusing non-authoritative write
+     at worst.  ProgressionService.scheduleServerSync() handles the
+     authoritative push for logged-in players via push_progression_snapshot. */
   const repSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (!userId) return;
+    // Only call saveRep for guests — authenticated users use server RPCs.
+    if (userId) return;
     if (repSaveTimerRef.current) clearTimeout(repSaveTimerRef.current);
     repSaveTimerRef.current = setTimeout(() => {
-      saveRep(userId, rep).catch(() => {});
+      // Guest: there is no userId, so saveRep would be a no-op anyway, but
+      // we keep the patchProgress call to keep the legacy local store in sync.
+      patchProgress({ rep });
     }, 3000);
     return () => {
       if (repSaveTimerRef.current) clearTimeout(repSaveTimerRef.current);
@@ -2858,7 +3008,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     progressionService.onCityEventJoined('treasure-hunt', treasureClaim.claimId);
     void rewardService.reportObjective({ objectiveType: 'join_event', ref: 'treasure-hunt' });
     sceneRef.current?.reportGameplayEvent({ type: 'CITY_EVENT_JOINED', eventId: 'treasure-hunt' });
-  }, [treasureClaim, applyHolderMultiplier, unlockBadge, appendChatMessage, playerName, showToast, pushStoryLog, completeLevelIfMatches]);
+    if (userId) {
+      void reportGuildGameplayEvent({
+        eventType: 'join_event',
+        ref: 'treasure-hunt',
+        idempotencyKey: `event:treasure-hunt:${new Date().toISOString().slice(0, 10)}`,
+      });
+    }
+  }, [treasureClaim, applyHolderMultiplier, unlockBadge, appendChatMessage, playerName, showToast, pushStoryLog, completeLevelIfMatches, userId]);
 
   /* ── Whale Alert claim — same one-shot pattern as the treasure claim
      above (WorldScene destroys the marker before emitting, so this only
@@ -2889,6 +3046,13 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     progressionService.onCityEventJoined('whale-alert', whaleClaim.claimId);
     void rewardService.reportObjective({ objectiveType: 'join_event', ref: 'whale-alert' });
     sceneRef.current?.reportGameplayEvent({ type: 'CITY_EVENT_JOINED', eventId: 'whale-alert' });
+    if (userId) {
+      void reportGuildGameplayEvent({
+        eventType: 'join_event',
+        ref: 'whale-alert',
+        idempotencyKey: `event:whale-alert:${new Date().toISOString().slice(0, 10)}`,
+      });
+    }
   }, [whaleClaim, applyHolderMultiplier, unlockBadge, appendChatMessage, playerName, showToast, pushStoryLog, completeLevelIfMatches]);
 
   /* ── District unlocks — same trigger state as the quests/badges above. ── */
@@ -3164,22 +3328,9 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         return <AlphaLoungePanel />;
       case 'cashback':
         return (
-          <>
-            <p className="modal-text">
-              Holder Cashback Vault — locked until $RUGTOWN activation.
-            </p>
-            <div className="modal-locked-list">
-              <div className="modal-locked-item">
-                <span className="modal-locked-icon">🔒</span>
-                <span className="modal-locked-desc">
-                  This vault holds automatic cashback rewards for verified $RUGTOWN holders.
-                  It will open when the token launches and holder verification is live.
-                  You can still inspect it for story missions.
-                </span>
-                <span className="modal-locked-tag">Locked</span>
-              </div>
-            </div>
-          </>
+          <p className="modal-text">
+            Quest Archive — records of hidden discoveries across RugTown. Step inside to browse what you've uncovered.
+          </p>
         );
       case 'arena':
         return (
@@ -3851,63 +4002,24 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
 
           {/* ──────────────────────────────────────────────────────
               LEADERBOARD — toggled from the action bar's Leaderboard
-              button. Local-only — 8 fake NPC rows + the player's own.
+              button. Phase 2: now the real server-ranked Points leaderboard
+              (get_points_leaderboard) instead of the old REP-based, NPC-
+              seeded inline block — see PointsLeaderboardPanel.tsx.
               ────────────────────────────────────────────────────── */}
-          {isLeaderboardOpen && (
-            <div className="hud-panel leaderboard-panel">
-              <span className="panel-corner panel-corner--tl" aria-hidden>◆</span>
-              <span className="panel-corner panel-corner--tr" aria-hidden>◆</span>
-              <span className="panel-corner panel-corner--bl" aria-hidden>◆</span>
-              <span className="panel-corner panel-corner--br" aria-hidden>◆</span>
+          <PointsLeaderboardPanel
+            open={isLeaderboardOpen}
+            onClose={() => setActiveAction(null)}
+            playerName={playerName ?? ''}
+            isGuest={!userId}
+          />
 
-              <div className="panel-header">
-                <span className="panel-header__logo">LEADERBOARD</span>
-                <button
-                  className="leaderboard-panel__close"
-                  onClick={() => setActiveAction(null)}
-                  aria-label="Close leaderboard"
-                >✕</button>
-              </div>
-
-              <div className="leaderboard-panel__tag">City Rankings</div>
-
-              <div className="leaderboard-tabs" role="tablist">
-                {LEADERBOARD_TABS.map(tab => (
-                  <button
-                    key={tab}
-                    role="tab"
-                    aria-selected={leaderboardTab === tab}
-                    className={`leaderboard-tab ${leaderboardTab === tab ? 'leaderboard-tab--active' : ''}`}
-                    onClick={() => setLeaderboardTab(tab)}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-
-              <div className="leaderboard-list">
-                {leaderboardRows.map(row => (
-                  <div
-                    key={`${row.name}-${row.isPlayer ? 'you' : row.isOnline ? 'live' : 'npc'}`}
-                    className={`leaderboard-row ${row.isPlayer ? 'leaderboard-row--you' : ''}`}
-                  >
-                    <span className="leaderboard-row__rank">
-                      {row.rank <= 3 ? MEDALS[row.rank - 1] : `#${row.rank}`}
-                    </span>
-                    <span className="leaderboard-row__name">
-                      {row.name}
-                      {row.isPlayer
-                        ? <span className="leaderboard-row__tag leaderboard-row__tag--you">You</span>
-                        : row.isOnline
-                          ? <span className="leaderboard-row__tag leaderboard-row__tag--live">LIVE</span>
-                          : <span className="leaderboard-row__tag leaderboard-row__tag--npc">NPC</span>}
-                    </span>
-                    <span className="leaderboard-row__rep">{row.rep.toLocaleString()} REP</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Mission HQ — Government Quarter's gameplay purpose (browse daily/
+              weekly missions, claim rewards, see level progress). */}
+          <MissionHQPanel
+            open={isMissionHQOpen}
+            onClose={() => setActiveAction(null)}
+            onToast={showToast}
+          />
 
           {/* ──────────────────────────────────────────────────────
               SETTINGS — toggled from the action bar's Settings button.
@@ -4059,18 +4171,18 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                 </button>
 
                 {/* ── Account ── shown only when signed in via Supabase ── */}
-                {userEmail && (
+                {(walletAddress || userEmail) && (
                   <div className="settings-mute-row settings-account-row">
-                    <span className="settings-account-email" title={userEmail}>
-                      {userEmail}
+                    <span className="settings-account-email" title={walletAddress ?? userEmail ?? ''}>
+                      {walletAddress ? shortenWalletAddress(walletAddress) : userEmail}
                     </span>
                     {onLogout && (
                       <button
                         className="settings-mute-btn settings-mute-btn--muted"
                         onClick={onLogout}
-                        aria-label="Sign out of your account"
+                        aria-label="Disconnect wallet and sign out"
                       >
-                        Sign Out
+                        Disconnect
                       </button>
                     )}
                   </div>
@@ -4875,6 +4987,19 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         isGuest={!userId}
         onClose={() => setGuildPanelOpen(false)}
         onToast={(text) => showToast(text)}
+      />
+
+      <RugTownGuildPanel
+        open={rugtownGuildOpen}
+        playerLevel={progression?.level ?? currentLevel}
+        playerRep={rep}
+        onClose={() => setRugtownGuildOpen(false)}
+        onRepAwarded={(amount) => setRep((r) => r + amount)}
+      />
+
+      <QuestArchivePanel
+        open={vaultPanelOpen}
+        onClose={() => setVaultPanelOpen(false)}
       />
 
       <ModerationOperationsPanel

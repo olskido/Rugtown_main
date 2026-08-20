@@ -13,6 +13,8 @@ export type ProgressionEventType =
   | 'wave_sent'
   | 'rep_awarded'
   | 'xp_awarded'
+  | 'points_awarded'
+  | 'streak_advanced'
   | 'level_up'
   | 'achievement_unlocked'
   | 'title_unlocked'

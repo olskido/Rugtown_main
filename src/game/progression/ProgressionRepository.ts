@@ -1,8 +1,11 @@
 /**
- * ProgressionRepository.ts — local persistence + Supabase boundary (Phase 10F).
- * Server writes for full progression are prepared but not required yet.
+ * ProgressionRepository.ts — local persistence + Supabase boundary (Phase 16).
+ * syncToServer is now implemented: it calls push_progression_snapshot on the
+ * server (Phase 16 migration required) and is debounced by the caller so it
+ * fires at most once per 10 s during active gameplay.
  */
 
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { loadProgress, patchProgress, type RugtownProgress } from '../../lib/progress';
 import { ACHIEVEMENT_CATALOG } from './AchievementCatalog';
 import { deriveRankTier } from './RankLadder';
@@ -65,6 +68,7 @@ export function createDefaultProgression(opts: {
   }
 
   const level = 1;
+  const today = nowIso().slice(0, 10);
   return {
     schemaVersion: PROGRESSION_SCHEMA_VERSION,
     playerId: opts.playerId,
@@ -73,7 +77,18 @@ export function createDefaultProgression(opts: {
     currentXp: 0,
     lifetimeXp: 0,
     rep,
-    rankTier: deriveRankTier({ level, rep, achievementPoints: 0 }),
+    points: {
+      daily: 0,
+      weekly: 0,
+      lifetime: 0,
+    },
+    streak: {
+      current: 1,
+      longest: 1,
+      lastActiveDate: today,
+      multiplier: 1.0,
+    },
+    rankTier: deriveRankTier({ level }),
     season: emptySeasonProgress(),
     equippedTitleId: null,
     unlockedTitleIds: [],
@@ -170,12 +185,18 @@ function sanitize(raw: Partial<PlayerProgression>, playerId: string, isGuest: bo
     currentXp: levelInfo.currentXp,
     lifetimeXp,
     rep,
-    rankTier: deriveRankTier({
-      level: levelInfo.level,
-      rep,
-      achievementPoints: achPoints,
-      seasonPoints: raw.season?.seasonPoints ?? 0,
-    }),
+    points: {
+      daily: typeof raw.points?.daily === 'number' && Number.isFinite(raw.points.daily) ? Math.max(0, Math.floor(raw.points.daily)) : 0,
+      weekly: typeof raw.points?.weekly === 'number' && Number.isFinite(raw.points.weekly) ? Math.max(0, Math.floor(raw.points.weekly)) : 0,
+      lifetime: typeof raw.points?.lifetime === 'number' && Number.isFinite(raw.points.lifetime) ? Math.max(0, Math.floor(raw.points.lifetime)) : 0,
+    },
+    streak: {
+      current: typeof raw.streak?.current === 'number' && Number.isFinite(raw.streak.current) ? Math.max(1, Math.floor(raw.streak.current)) : 1,
+      longest: typeof raw.streak?.longest === 'number' && Number.isFinite(raw.streak.longest) ? Math.max(1, Math.floor(raw.streak.longest)) : 1,
+      lastActiveDate: typeof raw.streak?.lastActiveDate === 'string' ? raw.streak.lastActiveDate : nowIso().slice(0, 10),
+      multiplier: typeof raw.streak?.multiplier === 'number' && Number.isFinite(raw.streak.multiplier) ? Math.max(1.0, raw.streak.multiplier) : 1.0,
+    },
+    rankTier: deriveRankTier({ level: levelInfo.level }),
     season: {
       ...emptySeasonProgress(),
       ...(raw.season ?? {}),
@@ -214,8 +235,18 @@ function storageKeyFor(playerId: string): string {
 export interface ProgressionRepository {
   load(playerId: string, isGuest: boolean): PlayerProgression;
   save(prog: PlayerProgression): void;
-  /** Future Supabase sync boundary — no-op locally. */
-  syncToServer?(prog: PlayerProgression): Promise<void>;
+  /**
+   * Push the authoritative local snapshot to the server via
+   * push_progression_snapshot (Phase 16 RPC).
+   *
+   * - No-op for guests (isGuest = true) or when Supabase is not configured.
+   * - Server applies max-wins merge for XP/REP so this is safe to call
+   *   speculatively; it will never reduce the server-side values.
+   * - Returns true if the server acknowledged the push, false otherwise
+   *   (network failure, pre-migration DB, etc.).  Callers must not block
+   *   gameplay on the return value.
+   */
+  syncToServer?(prog: PlayerProgression): Promise<boolean>;
 }
 
 export const localProgressionRepository: ProgressionRepository = {
@@ -252,8 +283,68 @@ export const localProgressionRepository: ProgressionRepository = {
     }
   },
 
-  async syncToServer(_prog) {
-    // Phase 10G — server-authoritative progression snapshots.
+  async syncToServer(prog: PlayerProgression): Promise<boolean> {
+    // Guests never sync — their progress is intentionally session-only.
+    if (prog.isGuest) return false;
+    if (!isSupabaseConfigured || !supabase) return false;
+
+    try {
+      const { data, error } = await supabase.rpc('push_progression_snapshot', {
+        p_lifetime_xp:      prog.lifetimeXp,
+        p_rep:              prog.rep,
+        p_points_daily:     prog.points?.daily    ?? 0,
+        p_points_weekly:    prog.points?.weekly   ?? 0,
+        p_points_lifetime:  prog.points?.lifetime ?? 0,
+        p_streak_current:   prog.streak?.current  ?? 1,
+        p_streak_longest:   prog.streak?.longest  ?? 1,
+        p_streak_date:      prog.streak?.lastActiveDate ?? null,
+      });
+
+      if (error) {
+        const missing =
+          error.code === 'PGRST202' ||
+          /does not exist|function .* does not exist|schema cache/i.test(error.message ?? '');
+        if (missing) {
+          // Phase 16 migration not yet applied — silently skip rather than spam errors.
+          return false;
+        }
+        console.warn('[ProgressionRepository] syncToServer failed:', error.message);
+        return false;
+      }
+
+      // Server may return updated authoritative values; if so, patch local cache.
+      if (data && typeof data === 'object') {
+        const snap = data as Record<string, unknown>;
+        if (typeof snap.level === 'number' && snap.level > prog.level) {
+          prog.level = snap.level as number;
+        }
+        if (typeof snap.lifetime_xp === 'number' && (snap.lifetime_xp as number) > prog.lifetimeXp) {
+          prog.lifetimeXp = snap.lifetime_xp as number;
+        }
+        if (typeof snap.rep === 'number' && (snap.rep as number) > prog.rep) {
+          prog.rep = snap.rep as number;
+        }
+        if (typeof snap.rug_points === 'number') {
+          if (!prog.points) prog.points = { daily: 0, weekly: 0, lifetime: 0 };
+          prog.points.lifetime = Math.max(prog.points.lifetime, snap.rug_points as number);
+        }
+        if (typeof snap.daily_points === 'number') {
+          if (!prog.points) prog.points = { daily: 0, weekly: 0, lifetime: 0 };
+          // If the server reset the daily bucket, honour that reset locally.
+          prog.points.daily = snap.daily_points as number;
+        }
+        if (typeof snap.weekly_points === 'number') {
+          if (!prog.points) prog.points = { daily: 0, weekly: 0, lifetime: 0 };
+          prog.points.weekly = snap.weekly_points as number;
+        }
+        // Persist the post-merge state so localStorage stays consistent.
+        this.save(prog);
+      }
+
+      return true;
+    } catch {
+      return false;
+    }
   },
 };
 

@@ -27,8 +27,32 @@ export interface DbProfile {
   avatar_url: string | null;
   rep: number;
   holder_tier: 'None' | 'Bronze' | 'Silver' | 'Gold';
+  wallet_address?: string | null;
+  wallet_chain?: string | null;
+  username_normalized?: string | null;
+  onboarding_completed?: boolean;
+  authenticated_at?: string | null;
   created_at: string;
   last_seen_at: string;
+}
+
+export interface RugtownProfileState {
+  id: string;
+  username: string;
+  displayName: string | null;
+  onboardingCompleted: boolean;
+  walletAddress: string | null;
+  rep: number;
+  level?: number;
+  /** Phase 16: full progression fields from get_rugtown_profile_state */
+  lifetimeXp?: number;
+  rugPoints?: number;
+  dailyPoints?: number;
+  weeklyPoints?: number;
+  progressionCurveVersion?: number;
+  streakCurrent?: number | null;
+  streakLongest?: number | null;
+  streakLastDailyKey?: string | null;
 }
 
 export interface DbCharacterAppearance {
@@ -165,6 +189,142 @@ export interface DbRpcMap {
       grandfatheredLevel?: number;
       progression?: DbPlayerProgression;
     };
+  };
+  get_rugtown_profile_state: {
+    Args: Record<string, never>;
+    Returns: RugtownProfileState | null;
+  };
+  check_username_available: {
+    Args: { p_username: string };
+    Returns: boolean;
+  };
+  create_rugtown_profile: {
+    Args: { p_username: string };
+    Returns: { ok: boolean; username?: string; error?: string };
+  };
+  get_guild_state: {
+    Args: Record<string, never>;
+    Returns: unknown;
+  };
+  assign_daily_guild_contracts: {
+    Args: Record<string, never>;
+    Returns: unknown;
+  };
+  claim_guild_contract: {
+    Args: { p_contract_id: string };
+    Returns: unknown;
+  };
+  complete_guild_day: {
+    Args: Record<string, never>;
+    Returns: unknown;
+  };
+  report_guild_gameplay_event: {
+    Args: {
+      p_event_type: string;
+      p_ref?: string | null;
+      p_counterpart_id?: string | null;
+      p_idempotency_key?: string | null;
+    };
+    Returns: unknown;
+  };
+  record_reward_points: {
+    Args: {
+      p_source_type: string;
+      p_source_id: string;
+      p_base_points: number;
+      p_idempotency_key: string;
+    };
+    Returns: unknown;
+  };
+  get_reward_vault_state: {
+    Args: Record<string, never>;
+    Returns: unknown;
+  };
+  claim_epoch_reward: {
+    Args: { p_epoch_id: string };
+    Returns: unknown;
+  };
+  refresh_holder_status: {
+    Args: { p_balance_base_units?: number | string | null };
+    Returns: unknown;
+  };
+  apply_verified_holder_status: {
+    Args: {
+      p_user_id: string;
+      p_wallet_address: string;
+      p_balance_base_units: number | string;
+      p_is_stale?: boolean;
+      p_refresh_error?: string | null;
+    };
+    Returns: unknown;
+  };
+  begin_epoch_reward_claim: {
+    Args: { p_epoch_id: string };
+    Returns: unknown;
+  };
+  run_reward_epoch_maintenance: {
+    Args: Record<string, never>;
+    Returns: unknown;
+  };
+
+  // ── Phase 2: progression, missions, hidden quests, leaderboards ──
+  ensure_period_missions: {
+    Args: { p_period_type: 'daily' | 'weekly' };
+    Returns: { periodType: string; periodKey: string; timezone: 'UTC'; assignments: unknown[] };
+  };
+  claim_daily_completion_bonus: {
+    Args: Record<string, never>;
+    Returns: { ok: boolean; duplicate?: boolean; reason?: string; claimed?: number; total?: number; progression?: DbPlayerProgression };
+  };
+  record_daily_participation: {
+    Args: Record<string, never>;
+    Returns: {
+      ok: boolean; duplicate: boolean; currentStreak: number; longestStreak: number;
+      milestoneBonus: { streakDays: number; repAwarded: number; pointsAwarded: number } | null;
+    };
+  };
+  get_my_streak: {
+    Args: Record<string, never>;
+    Returns: { currentStreak: number; longestStreak: number; lastDailyKey: string | null };
+  };
+  record_activity_heartbeat: {
+    Args: Record<string, never>;
+    Returns: { ok: boolean; reason?: 'cooldown' | 'daily_cap_reached'; rewardCountToday: number; repAwarded?: number; pointsAwarded?: number };
+  };
+  discover_hidden_quest: {
+    Args: { p_quest_id: string };
+    Returns: { ok: boolean; questId: string };
+  };
+  complete_hidden_quest: {
+    Args: { p_quest_id: string };
+    Returns: { ok: boolean; duplicate: boolean; reward?: { xp_reward: number; rep_reward: number; points_reward: number }; progression?: DbPlayerProgression };
+  };
+  get_my_hidden_quests: {
+    Args: Record<string, never>;
+    Returns: { quests: Array<{ player_id: string; quest_id: string; status: 'discovered' | 'completed'; discovered_at: string; completed_at: string | null }> };
+  };
+  get_points_leaderboard: {
+    Args: { p_period: 'daily' | 'weekly' | 'all_time'; p_limit?: number; p_offset?: number };
+    Returns: {
+      period: string; limit: number; offset: number;
+      rows: Array<{ rank: number; playerId: string; username: string; level: number; rep: number; points: number }>;
+    };
+  };
+  get_my_leaderboard_rank: {
+    Args: { p_period: 'daily' | 'weekly' | 'all_time' };
+    Returns: { period: string; points: number; rank: number };
+  };
+  get_leaderboard_history: {
+    Args: { p_period_type: 'daily' | 'weekly'; p_period_key: string; p_limit?: number };
+    Returns: unknown[];
+  };
+  settle_weekly_leaderboard: {
+    Args: { p_period_key?: string | null };
+    Returns: { ok: boolean; duplicate: boolean; periodKey: string; settled: number };
+  };
+  get_weekly_champions: {
+    Args: { p_limit?: number };
+    Returns: Array<{ period_key: string; rank: number; player_id: string; username: string; points: number; title_awarded: string | null; settled_at: string }>;
   };
 }
 

@@ -1,16 +1,13 @@
 /**
- * XpCurve.ts — centralized Level 1–50 XP thresholds.
- * Curve v3 (gameplay completion): slower early levels so onboarding (~320 XP)
- * lands around level 2, not a multi-level spike. Existing players keep
- * grandfathered levels via migrate_progression_curve_v3 on the server.
- *
- * Targets: L1–5 accessible, L6–15 regular play, L16–30 sustained, 30+ long-term.
+ * XpCurve.ts — centralized Level 1–100 XP thresholds.
+ * Curve v4 (100-Level Social Progression): Smooth progression across all 10 tiers,
+ * from early Citizen onboarding (L1-10) up to Endgame and RugTown Legend (L100).
  */
 
 import { MAX_LEVEL } from './types';
 
-/** Client curve version — must stay aligned with SQL rt_xp_required_for_level_v3. */
-export const PROGRESSION_CURVE_VERSION = 3;
+/** Client curve version — aligned with SQL rt_xp_required_for_level_100. */
+export const PROGRESSION_CURVE_VERSION = 4;
 
 /**
  * XP required to advance FROM `level` TO `level + 1`.
@@ -19,9 +16,8 @@ export const PROGRESSION_CURVE_VERSION = 3;
 export function xpRequiredForLevel(level: number): number {
   if (level < 1) return xpRequiredForLevel(1);
   if (level >= MAX_LEVEL) return 0;
-  // 200 at L1, 250 at L2, 310 at L3 — steeper than v2 without punishing mid-game.
   const step = level - 1;
-  return Math.round(200 + (50 * step) + (5 * step * step));
+  return Math.round(200 + (45 * step) + (6 * step * step) + (0.08 * step * step * step));
 }
 
 /** Cumulative lifetime XP needed to *reach* `level` (level 1 = 0). */

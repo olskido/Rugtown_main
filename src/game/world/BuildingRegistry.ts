@@ -72,11 +72,11 @@ const BY_ID: Record<string, Omit<BuildingRegistryEntry, 'id' | 'displayName'>> =
   government: {
     district: 'west',
     interactionLive: true,
-    access: 'exterior_only',
+    access: 'open',
     uiPanel: 'generic',
     npcRoles: ['government_official'],
     linkedMissionHints: ['story_vault_report'],
-    summary: 'Civic announcements and weekly quest info.',
+    summary: 'Mission HQ — Guild contracts, daily/weekly missions, and level progression. Open the Mission HQ panel from the HUD.',
   },
   trading_academy: {
     district: 'west',
@@ -153,12 +153,16 @@ const BY_ID: Record<string, Omit<BuildingRegistryEntry, 'id' | 'displayName'>> =
   arena: {
     district: 'east',
     interactionLive: true,
-    access: 'coming_soon',
+    // Was 'coming_soon' — stale: EnterableBuildings ('future-arena') has had
+    // access: 'open' since the Challenge Arena rename; this field was never
+    // updated to match and is otherwise unused at runtime (see BuildingRegistry
+    // access-flag note), but it's confusing for anyone reading the registry
+    // as source of truth, so it's corrected here.
+    access: 'open',
     uiPanel: 'arena',
     npcRoles: ['arena_coordinator'],
     linkedMissionHints: ['story_arena_prep'],
-    summary: 'Arena preview and training — no live tournament yet.',
-    lockedMessage: 'Future Arena is coming soon.',
+    summary: 'Challenge Arena — skill challenges and leaderboard-oriented events.',
   },
   alpha: {
     district: 'west',
@@ -208,12 +212,11 @@ const BY_ID: Record<string, Omit<BuildingRegistryEntry, 'id' | 'displayName'>> =
   cashback: {
     district: 'south',
     interactionLive: true,
-    access: 'locked',
+    access: 'open',
     uiPanel: 'cashback',
     npcRoles: [],
     linkedMissionHints: ['story_vault_investigate'],
-    summary: 'Intentionally locked vault with story interaction.',
-    lockedMessage: 'Holder Cashback Vault is locked until $RUGTOWN holder perks go live.',
+    summary: 'RugTown Vault — holder tiers and token reward claims.',
   },
 };
 

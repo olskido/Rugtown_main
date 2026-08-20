@@ -40,6 +40,7 @@ import {
 } from '../../lib/social';
 import { getDistrictAtWorld, WORLD_DISTRICTS } from '../world/WorldDistricts';
 import { MissionSystem, createStarterMissionSystem } from '../systems/MissionSystem';
+import { HiddenQuestDirector } from '../missions/HiddenQuestDirector';
 import { MissionEventBridge, setActiveMissionBridge } from '../missions/MissionEventBridge';
 import type { GameplayEvent } from '../missions/MissionTypes';
 import { getNpcByLandmark } from '../npcs/FunctionalNpcs';
@@ -667,6 +668,7 @@ export class WorldScene extends Phaser.Scene {
   private selectedRemotePlayerId: string | null = null;
   private mission: MissionSystem = createStarterMissionSystem();
   private missionBridge = new MissionEventBridge();
+  private hiddenQuests = new HiddenQuestDirector();
   /* ── Phase 4 World Engine generators ── */
   private buildingGenerator!: BuildingGenerator;
   private decorationGenerator!: DecorationGenerator;
@@ -826,6 +828,28 @@ export class WorldScene extends Phaser.Scene {
      CREATE
      ═══════════════════════════════════════════════════════════ */
   create() {
+    // GamePage pushes the authoritative player level onto the shared Phaser
+    // registry (see progressionService.subscribe in GamePage.tsx). Mirror it
+    // into the mission system so minimumLevel gating (MissionSystem.ts) has
+    // real data instead of defaulting to "no gate" — and pick up whatever
+    // value is already there in case it was set before this scene existed.
+    const initialLevel = this.registry.get('playerLevel');
+    if (typeof initialLevel === 'number') {
+      this.mission.setPlayerLevel(initialLevel);
+      this.hiddenQuests.setContext({ level: initialLevel });
+    }
+    this.registry.events.on('changedata-playerLevel', (_parent: unknown, value: unknown) => {
+      if (typeof value === 'number') {
+        this.mission.setPlayerLevel(value);
+        this.hiddenQuests.setContext({ level: value });
+      }
+    });
+    const initialStreak = this.registry.get('playerStreak');
+    if (typeof initialStreak === 'number') this.hiddenQuests.setContext({ streakCurrent: initialStreak });
+    this.registry.events.on('changedata-playerStreak', (_parent: unknown, value: unknown) => {
+      if (typeof value === 'number') this.hiddenQuests.setContext({ streakCurrent: value });
+    });
+
     charPerfMark('WorldScene.characterRegistryHydrate.start');
     hydrateCharacterRegistryFromScene(this);
     charPerfMark('WorldScene.characterRegistryHydrate.end');
@@ -1020,12 +1044,20 @@ export class WorldScene extends Phaser.Scene {
     const savedProgress = loadProgress();
     this.mission.restoreCompleted(savedProgress.completedMissions);
     this.visitedInteriors = new Set(savedProgress.visitedInteriors);
+    this.hiddenQuests.restoreState({
+      discoveredIds: savedProgress.hiddenQuestsDiscovered,
+      completedIds: savedProgress.hiddenQuestsCompleted,
+    });
+    this.hiddenQuests.setContext({ completedMissionIds: new Set(savedProgress.completedMissions) });
     this.missionBridge.subscribe((ev) => {
       if (this.mission.handleEvent(ev)) this.publishMissionState();
+      const hq = this.hiddenQuests.processEvent(ev);
+      if (hq.discovered.length || hq.completed.length) this.publishHiddenQuestState(hq);
     });
     setActiveMissionBridge(this.missionBridge);
     this.registry.set('currentDistrict', '');
     this.publishMissionState();
+    this.publishHiddenQuestState({ discovered: [], completed: [] });
     this.registry.set('collisionDebug', false);
     this.registry.set('assetBoundsDebug', false);
     this.registry.set('assetAnchorsDebug', false);
@@ -2624,6 +2656,32 @@ export class WorldScene extends Phaser.Scene {
     patchProgress({
       completedMissions: this.mission.getCompletedIds(),
       activeMission: active?.id ?? null,
+    });
+    // Keep hidden-quest MISSION_COMPLETION triggers in sync with newly-completed missions.
+    this.hiddenQuests.setContext({ completedMissionIds: new Set(this.mission.getCompletedIds()) });
+  }
+
+  /**
+   * Publish hidden-quest state to the registry (GamePage reads it for the
+   * Quest Archive panel + discovery toasts) and persist locally. `delta` is
+   * forwarded so GamePage can show a one-time "Hidden quest discovered!" /
+   * "Hidden quest completed!" toast and push the server RPC calls in
+   * src/lib/hiddenQuests.ts (idempotent — safe even if the same delta is
+   * ever published twice).
+   */
+  private publishHiddenQuestState(delta: { discovered: string[]; completed: string[] }) {
+    const state = this.hiddenQuests.getState();
+    this.registry.set('hiddenQuestState', {
+      discoveredIds: state.discoveredIds,
+      completedIds: state.completedIds,
+      discoveredCount: state.discoveredIds.length,
+      completedCount: state.completedIds.length,
+      totalCount: this.hiddenQuests.getAllQuests().length,
+      delta,
+    });
+    patchProgress({
+      hiddenQuestsDiscovered: state.discoveredIds,
+      hiddenQuestsCompleted: state.completedIds,
     });
   }
 

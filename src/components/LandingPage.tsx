@@ -34,14 +34,14 @@ const MOCK_STATS = {
   alphaCalls: 38,
 };
 
-// Feature cards matching Image 2 bottom bar exactly
+// Feature cards matching RugTown's social progression pillars
 const FEATURES = [
-  { icon: 'Explore',           label: 'Explore' },
-  { icon: 'Trade',             label: 'Trade' },
-  { icon: 'Compete',           label: 'Compete' },
-  { icon: 'Earn Reputation',   label: 'Earn Reputation' },
-  { icon: 'Collect Badges',    label: 'Collect Badges' },
-  { icon: 'Holder Perks',      label: 'Holder Perks' },
+  { icon: 'Explore',           label: 'Explore City' },
+  { icon: 'Missions',          label: 'Mission HQ' },
+  { icon: 'Compete',           label: 'Leaderboard' },
+  { icon: 'Earn Reputation',   label: 'Earn REP & XP' },
+  { icon: 'Collect Badges',    label: '100 Levels' },
+  { icon: 'Hidden Secrets',    label: 'Hidden Quests' },
 ];
 
 // ──────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ export function LandingPage({ onEnterRugtown }: LandingPageProps) {
                 <span className="card__divider-line" />
               </div>
 
-              {/* Tagline — "Survive or Get Rugged." from Image 2 */}
+              {/* Tagline — "Survive or Get Rugged." */}
               <p className="card__tagline">
                 <em>Survive or Get Rugged.</em>
               </p>
@@ -284,10 +284,10 @@ export function LandingPage({ onEnterRugtown }: LandingPageProps) {
               >
                 <span className="btn__shimmer" aria-hidden />
                 <span className="btn__arrow" aria-hidden>▶</span>
-                <span className="btn__label">Enter RugTown</span>
+                <span className="btn__label">ENTER RUGTOWN</span>
               </button>
 
-                {/* Secondary row — "Live Players" + "Connect Wallet" from Image 2 */}
+                {/* Secondary row — "Live Players" + "Missions & Quests" */}
                 <div className="card__btn-row">
                   <button
                     className="btn btn--secondary"
@@ -298,31 +298,25 @@ export function LandingPage({ onEnterRugtown }: LandingPageProps) {
                   </button>
 
                   <button
-                    className="btn btn--secondary btn--disabled"
-                    disabled
-                    aria-label="Connect Solana wallet — coming soon"
-                    title="Wallet connection coming soon"
+                    className="btn btn--secondary"
+                    onClick={onEnterRugtown}
+                    aria-label="Daily & Weekly Missions"
                   >
-                    {/* Wallet icon */}
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-                      <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/>
-                      <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/>
-                      <path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>
-                    </svg>
-                    <span>Connect Wallet</span>
+                    <span className="btn__icon" aria-hidden>📜</span>
+                    <span>100 Levels & Quests</span>
                   </button>
                 </div>
 
-                {/* Tertiary row — "Today's Alpha Calls" + "Latest Activity" from Image 2 */}
+                {/* Tertiary row — "Hall of Fame" + "Leaderboards" */}
                 <div className="card__btn-row">
-                  <button className="btn btn--ghost">
-                    <span className="btn__icon" aria-hidden>📡</span>
-                    <span>Today's Alpha Calls</span>
+                  <button className="btn btn--ghost" onClick={onEnterRugtown}>
+                    <span className="btn__icon" aria-hidden>🏆</span>
+                    <span>Points Leaderboard</span>
                   </button>
 
-                  <button className="btn btn--ghost">
-                    <span className="btn__icon" aria-hidden>⚡</span>
-                    <span>Latest Activity</span>
+                  <button className="btn btn--ghost" onClick={onEnterRugtown}>
+                    <span className="btn__icon" aria-hidden>🔍</span>
+                    <span>Hidden Quests</span>
                   </button>
                 </div>
 

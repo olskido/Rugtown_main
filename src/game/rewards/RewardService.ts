@@ -246,7 +246,16 @@ class RewardService {
     this.seasonId = snap.season_id;
     this.seasonPoints = Number(snap.season_points ?? 0);
     this.migrated = !!snap.migrated_from_local;
-    progressionService.syncFromServerSnapshot(snap);
+    // Forward all known fields — ProgressionService handles max-wins merge.
+    progressionService.syncFromServerSnapshot({
+      lifetime_xp:         snap.lifetime_xp,
+      level:               snap.level,
+      rep:                 snap.rep,
+      claimed_reward_keys: snap.claimed_reward_keys,
+      rug_points:          snap.rug_points,
+      daily_points:        snap.daily_points,
+      weekly_points:       snap.weekly_points,
+    });
   }
 
   /** Server-authoritative Chapter One mission completion (Phase 13). */

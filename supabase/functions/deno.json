@@ -1,7 +1,8 @@
 {
   "imports": {
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
-    "@solana/web3.js": "https://esm.sh/@solana/web3.js@1.95.3"
+    "@solana/web3.js": "https://esm.sh/@solana/web3.js@1.95.3",
+    "@solana/spl-token": "https://esm.sh/@solana/spl-token@0.4.9"
   },
   "lint": {
     "rules": {

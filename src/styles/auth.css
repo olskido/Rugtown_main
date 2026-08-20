@@ -230,7 +230,7 @@
   margin-top: 4px;
 }
 
-/* Truncated email label */
+/* Truncated email / wallet label */
 .settings-account-email {
   font-size: 9px;
   letter-spacing: 0.04em;
@@ -240,6 +240,178 @@
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+/* Wallet auth + username onboarding (Phase 15) */
+.auth-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(20px, 2.2vw, 40px) 16px;
+  background: #050c10;
+}
+
+.auth-card {
+  width: min(360px, 94vw);
+  padding: 24px 22px;
+  border: 1px solid rgba(200, 144, 42, 0.35);
+  background: rgba(6, 10, 12, 0.92);
+}
+
+.auth-title {
+  font-family: 'Cinzel Decorative', Cinzel, serif;
+  font-size: 22px;
+  color: #e8b84b;
+  text-align: center;
+  margin: 0 0 8px;
+}
+
+.auth-sub {
+  font-size: 12px;
+  color: #c8b89a;
+  text-align: center;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+/* ── Google OAuth Button ── */
+.btn--google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(20, 24, 30, 0.95);
+  border: 1px solid rgba(232, 184, 75, 0.4);
+  border-radius: 4px;
+  color: #f0e6d2;
+  font-family: 'Cinzel', serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 4px;
+}
+
+.btn--google:hover:not(:disabled) {
+  background: rgba(30, 36, 45, 0.98);
+  border-color: #e8b84b;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 12px rgba(232, 184, 75, 0.25);
+}
+
+.btn--google:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn--google:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.google-icon {
+  flex-shrink: 0;
+}
+
+.auth-back {
+  background: none;
+  border: none;
+  color: #9a8a6a;
+  cursor: pointer;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.auth-status,
+.auth-hint {
+  font-size: 11px;
+  color: #c8b89a;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.auth-hint--ok { color: #8a9a5a; }
+
+.auth-error {
+  font-size: 11px;
+  color: #c87070;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.auth-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9a8a6a;
+  margin-bottom: 6px;
+}
+
+.auth-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(200, 144, 42, 0.35);
+  color: #e8d8b8;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.auth-submit {
+  width: 100%;
+  padding: 12px;
+  font-family: Cinzel, serif;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1a1000;
+  background: linear-gradient(180deg, #e8b84b, #c8902a);
+  border: 1px solid #9a6e1e;
+  cursor: pointer;
+}
+
+.auth-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wallet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.wallet-list__btn {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: Cinzel, serif;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: #e8b84b;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(200, 144, 42, 0.4);
+  cursor: pointer;
+}
+
+.wallet-list__btn:hover:not(:disabled) {
+  border-color: #c8902a;
+  background: rgba(42, 24, 0, 0.45);
+}
+
+.wallet-list__btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
 }
 
 /* ══════════════════════════════════════════════════════════════

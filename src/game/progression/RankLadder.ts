@@ -1,6 +1,6 @@
 /**
- * RankLadder.ts — RugTown progression rank (not holder tier).
- * Derived from level + REP + achievement points. Never from wallet.
+ * RankLadder.ts — RugTown 10-Tier Progression Ladder (100 Levels).
+ * Driven directly by player level and achievements.
  */
 
 import type { RankTierId } from './types';
@@ -8,53 +8,44 @@ import type { RankTierId } from './types';
 export interface RankTierDef {
   id: RankTierId;
   displayName: string;
-  /** Minimum composite score to hold this tier. */
-  minScore: number;
+  minLevel: number;
+  maxLevel: number;
   order: number;
 }
 
 export const RANK_LADDER: RankTierDef[] = [
-  { id: 'drifter', displayName: 'Drifter', minScore: 0, order: 0 },
-  { id: 'scout', displayName: 'Scout', minScore: 40, order: 1 },
-  { id: 'trader', displayName: 'Trader', minScore: 100, order: 2 },
-  { id: 'broker', displayName: 'Broker', minScore: 180, order: 3 },
-  { id: 'market_maker', displayName: 'Market Maker', minScore: 280, order: 4 },
-  { id: 'whale_hunter', displayName: 'Whale Hunter', minScore: 400, order: 5 },
-  { id: 'rugtown_elite', displayName: 'RugTown Elite', minScore: 550, order: 6 },
-  { id: 'town_legend', displayName: 'Town Legend', minScore: 750, order: 7 },
+  { id: 'citizen',        displayName: 'Citizen',          minLevel: 1,   maxLevel: 10,  order: 0 },
+  { id: 'explorer',       displayName: 'Explorer',         minLevel: 11,  maxLevel: 20,  order: 1 },
+  { id: 'socialite',      displayName: 'Socialite',        minLevel: 21,  maxLevel: 30,  order: 2 },
+  { id: 'specialist',     displayName: 'Specialist',       minLevel: 31,  maxLevel: 40,  order: 3 },
+  { id: 'investigator',   displayName: 'Investigator',     minLevel: 41,  maxLevel: 50,  order: 4 },
+  { id: 'hunter',         displayName: 'Hunter',           minLevel: 51,  maxLevel: 60,  order: 5 },
+  { id: 'elite',          displayName: 'Elite',            minLevel: 61,  maxLevel: 70,  order: 6 },
+  { id: 'master',         displayName: 'Master',           minLevel: 71,  maxLevel: 80,  order: 7 },
+  { id: 'legend_hunter',  displayName: 'Legend Hunter',    minLevel: 81,  maxLevel: 90,  order: 8 },
+  { id: 'endgame',        displayName: 'Endgame Pioneer',  minLevel: 91,  maxLevel: 99,  order: 9 },
+  { id: 'rugtown_legend', displayName: 'RugTown Legend',   minLevel: 100, maxLevel: 100, order: 10 },
 ];
 
-/** Composite score: level*8 + sqrt(rep)*2 + achievementPoints*12 */
-export function computeRankScore(opts: {
-  level: number;
-  rep: number;
-  achievementPoints: number;
-  seasonPoints?: number;
-}): number {
-  const levelPart = Math.max(1, opts.level) * 8;
-  const repPart = Math.sqrt(Math.max(0, opts.rep)) * 2;
-  const achPart = Math.max(0, opts.achievementPoints) * 12;
-  const seasonPart = Math.max(0, opts.seasonPoints ?? 0) * 0.15;
-  return Math.floor(levelPart + repPart + achPart + seasonPart);
-}
-
-export function rankFromScore(score: number): RankTierDef {
-  let best = RANK_LADDER[0];
+export function rankTierFromLevel(level: number): RankTierDef {
+  const lvl = Math.max(1, Math.min(100, Math.floor(level)));
   for (const tier of RANK_LADDER) {
-    if (score >= tier.minScore) best = tier;
+    if (lvl >= tier.minLevel && lvl <= tier.maxLevel) {
+      return tier;
+    }
   }
-  return best;
+  return RANK_LADDER[0];
 }
 
 export function deriveRankTier(opts: {
   level: number;
-  rep: number;
-  achievementPoints: number;
+  rep?: number;
+  achievementPoints?: number;
   seasonPoints?: number;
 }): RankTierId {
-  return rankFromScore(computeRankScore(opts)).id;
+  return rankTierFromLevel(opts.level).id;
 }
 
 export function rankDisplayName(id: RankTierId): string {
-  return RANK_LADDER.find((r) => r.id === id)?.displayName ?? 'Drifter';
+  return RANK_LADDER.find((r) => r.id === id)?.displayName ?? 'Citizen';
 }

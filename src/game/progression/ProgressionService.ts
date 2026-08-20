@@ -17,6 +17,7 @@ import { unlocksForLevel } from './UnlockCatalog';
 import { applyXpGain, levelProgressPercent, xpRequiredForLevel } from './XpCurve';
 import type {
   PlayerProgression,
+  PointsAwardResult,
   ProgressionSnapshot,
   RepAwardResult,
   XpAwardResult,
@@ -42,6 +43,9 @@ export class ProgressionService {
   private waveAwarded = false;
   private evaluatingAchievements = false;
   private achievementEvalDepth = 0;
+  /** Debounce handle for server sync — fires at most once per SERVER_SYNC_DEBOUNCE_MS */
+  private serverSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly SERVER_SYNC_DEBOUNCE_MS = 10_000;
 
   constructor(repo: ProgressionRepository = localProgressionRepository) {
     this.repo = repo;
@@ -63,6 +67,34 @@ export class ProgressionService {
     if (!force && now - this.lastPersistAt < 800) return;
     this.lastPersistAt = now;
     this.repo.save(this.prog);
+  }
+
+  /**
+   * Debounced push to the server.  Collapses rapid reward bursts into a single
+   * RPC call.  Guests are silently skipped inside syncToServer.
+   * Must not block the calling code path — fire-and-forget.
+   */
+  private scheduleServerSync(): void {
+    if (!this.prog || this.prog.isGuest) return;
+    if (!this.repo.syncToServer) return;
+    if (this.serverSyncTimer) clearTimeout(this.serverSyncTimer);
+    this.serverSyncTimer = setTimeout(() => {
+      this.serverSyncTimer = null;
+      if (this.prog && this.repo.syncToServer) {
+        void this.repo.syncToServer(this.prog);
+      }
+    }, ProgressionService.SERVER_SYNC_DEBOUNCE_MS);
+  }
+
+  /** Immediately flush any pending debounced sync.  Call on page unload / logout. */
+  flushServerSync(): void {
+    if (this.serverSyncTimer) {
+      clearTimeout(this.serverSyncTimer);
+      this.serverSyncTimer = null;
+    }
+    if (this.prog && !this.prog.isGuest && this.repo.syncToServer) {
+      void this.repo.syncToServer(this.prog);
+    }
   }
 
   init(playerId: string, isGuest: boolean, opts?: { seedRep?: number }): PlayerProgression {
@@ -99,12 +131,33 @@ export class ProgressionService {
     p.currentXp = info.currentXp;
     p.statistics.lifetimeXp = p.lifetimeXp;
     p.unlockedFeatureIds = unlocksForLevel(p.level);
-    p.rankTier = deriveRankTier({
-      level: p.level,
-      rep: p.rep,
-      achievementPoints: achievementPointsFromProgress(p.achievementProgress),
-      seasonPoints: p.season.seasonPoints,
-    });
+    p.rankTier = deriveRankTier({ level: p.level });
+
+    // Handle Daily Streak & Points Initialization
+    const today = new Date().toISOString().slice(0, 10);
+    if (!p.streak) {
+      p.streak = { current: 1, longest: 1, lastActiveDate: today, multiplier: 1.0 };
+    }
+    if (!p.points) {
+      p.points = { daily: 0, weekly: 0, lifetime: 0 };
+    }
+    if (p.streak.lastActiveDate && p.streak.lastActiveDate !== today) {
+      const prevDate = new Date(p.streak.lastActiveDate);
+      const currDate = new Date(today);
+      const diffDays = Math.round((currDate.getTime() - prevDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays === 1) {
+        p.streak.current += 1;
+        if (p.streak.current > p.streak.longest) p.streak.longest = p.streak.current;
+        progressionEvents.emit('streak_advanced', { current: p.streak.current, longest: p.streak.longest });
+      } else if (diffDays > 1) {
+        p.streak.current = 1;
+      }
+      p.streak.lastActiveDate = today;
+      p.streak.multiplier = Math.min(2.0, 1.0 + (p.streak.current - 1) * 0.05);
+      // Reset daily points on new calendar day (UTC)
+      p.points.daily = 0;
+    }
+
     p.statistics.uniqueLandmarksVisited = p.discoveredLandmarkIds.length;
     p.statistics.districtsVisited = p.discoveredDistrictIds.length;
     p.statistics.interiorsEntered = p.discoveredInteriorIds.length;
@@ -166,6 +219,7 @@ export class ProgressionService {
     this.evaluateAchievements();
     this.persist(true);
     this.notify(levelUps.length ? { levelUps } : undefined);
+    this.scheduleServerSync();
 
     return {
       awarded: true,
@@ -203,7 +257,54 @@ export class ProgressionService {
     this.evaluateAchievements();
     this.persist(true);
     this.notify();
+    this.scheduleServerSync();
     return { awarded: true, amount, reason: opts.reason, key, newRep: p.rep };
+  }
+
+  awardPoints(opts: {
+    amount: number;
+    reason: string;
+    idempotencyKey: string;
+  }): PointsAwardResult {
+    const p = this.require();
+    const amount = Math.max(0, Math.floor(opts.amount));
+    const key = opts.idempotencyKey;
+    if (!p.points) {
+      p.points = { daily: 0, weekly: 0, lifetime: 0 };
+    }
+    if (amount <= 0 || this.hasClaimed(key)) {
+      return {
+        awarded: false,
+        amount: 0,
+        reason: opts.reason,
+        key,
+        newDaily: p.points.daily,
+        newWeekly: p.points.weekly,
+        newLifetime: p.points.lifetime,
+      };
+    }
+    this.markClaimed(key);
+    p.points.daily += amount;
+    p.points.weekly += amount;
+    p.points.lifetime += amount;
+    this.recomputeDerived();
+    progressionEvents.emit('points_awarded', {
+      amount,
+      reason: opts.reason,
+      key,
+    });
+    this.persist(true);
+    this.notify();
+    this.scheduleServerSync();
+    return {
+      awarded: true,
+      amount,
+      reason: opts.reason,
+      key,
+      newDaily: p.points.daily,
+      newWeekly: p.points.weekly,
+      newLifetime: p.points.lifetime,
+    };
   }
 
   /**
@@ -230,6 +331,7 @@ export class ProgressionService {
     this.evaluateAchievements();
     this.persist(true);
     this.notify();
+    this.scheduleServerSync();
     return { awarded: true, amount, reason: opts.reason, key, newRep: p.rep };
   }
 
@@ -253,6 +355,10 @@ export class ProgressionService {
     level?: number;
     rep?: number;
     claimed_reward_keys?: unknown;
+    /** Phase 16 points fields */
+    rug_points?: number;
+    daily_points?: number;
+    weekly_points?: number;
   }): void {
     const p = this.require();
     if (typeof snap.lifetime_xp === 'number' && Number.isFinite(snap.lifetime_xp)) {
@@ -271,9 +377,23 @@ export class ProgressionService {
         }
       }
     }
+    // Phase 16: sync Points buckets from server (server is authoritative source).
+    // Server max-wins: never let a stale sync reduce a higher local value.
+    if (!p.points) p.points = { daily: 0, weekly: 0, lifetime: 0 };
+    if (typeof snap.rug_points === 'number' && Number.isFinite(snap.rug_points)) {
+      p.points.lifetime = Math.max(p.points.lifetime, Math.floor(snap.rug_points));
+    }
+    if (typeof snap.daily_points === 'number' && Number.isFinite(snap.daily_points)) {
+      // Server may have reset the daily bucket — accept server value unconditionally
+      // since the server performs the UTC reset and is authoritative.
+      p.points.daily = Math.max(0, Math.floor(snap.daily_points));
+    }
+    if (typeof snap.weekly_points === 'number' && Number.isFinite(snap.weekly_points)) {
+      p.points.weekly = Math.max(0, Math.floor(snap.weekly_points));
+    }
     this.recomputeDerived();
     if (typeof snap.level === 'number' && Number.isFinite(snap.level)) {
-      p.level = Math.max(1, Math.floor(snap.level));
+      p.level = Math.max(1, Math.min(100, Math.floor(snap.level)));
     }
     this.persist(true);
     this.notify();
@@ -607,10 +727,15 @@ export class ProgressionService {
     return {
       level: p.level,
       currentXp: info.currentXp,
-      xpToNext: info.level >= 50 ? 0 : xpRequiredForLevel(info.level),
+      xpToNext: info.level >= 100 ? 0 : xpRequiredForLevel(info.level),
       progressPercent: info.percent,
       lifetimeXp: p.lifetimeXp,
       rep: p.rep,
+      pointsDaily: p.points?.daily ?? 0,
+      pointsWeekly: p.points?.weekly ?? 0,
+      pointsLifetime: p.points?.lifetime ?? 0,
+      currentStreak: p.streak?.current ?? 1,
+      streakMultiplier: p.streak?.multiplier ?? 1.0,
       rankTier: p.rankTier,
       rankLabel: rankDisplayName(p.rankTier),
       equippedTitleId: p.equippedTitleId,

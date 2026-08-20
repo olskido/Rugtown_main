@@ -1,6 +1,7 @@
 import { getEnterableBuilding, getEnterableBuildingByWorldObjectId } from '../world/EnterableBuildings';
 import { STARTER_MISSIONS } from '../missions/definitions/starterMissions';
 import { STORY_MISSIONS } from '../missions/definitions/storyMissions';
+import { LEVEL_TWO_MISSIONS, BRACKET_MISSIONS } from '../missions/definitions/bracketMissions';
 import type {
   GameplayEvent,
   MissionDefinition,
@@ -22,8 +23,8 @@ function progressKey(missionId: string, objectiveId: string): string {
 }
 
 /**
- * Event-driven mission tracker for onboarding + story.
- * Does not scan the world each frame — consume GameplayEvents only.
+ * Event-driven mission tracker for onboarding, 100-level tiers, and stories.
+ * Does not scan the world each frame — consumes GameplayEvents only.
  */
 export class MissionSystem {
   private readonly definitions: MissionDefinition[];
@@ -32,8 +33,26 @@ export class MissionSystem {
   /** Distinct landmark visits for visit_any_of */
   private readonly distinctHits = new Map<string, Set<string>>();
   private walkDistanceAccum = 0;
+  /**
+   * Player's current level, used to gate which mission becomes "active".
+   * Defaults to Infinity so a caller that never wires setPlayerLevel() keeps
+   * the pre-existing purely-sequential behavior (no regression risk).
+   */
+  private playerLevel = Infinity;
 
-  constructor(definitions: MissionDefinition[] = [...STARTER_MISSIONS, ...STORY_MISSIONS]) {
+  /** Called whenever the player's authoritative level changes (level-up, session hydration). */
+  setPlayerLevel(level: number): void {
+    if (Number.isFinite(level) && level > 0) this.playerLevel = level;
+  }
+
+  constructor(
+    definitions: MissionDefinition[] = [
+      ...STARTER_MISSIONS,
+      ...LEVEL_TWO_MISSIONS,
+      ...STORY_MISSIONS,
+      ...BRACKET_MISSIONS,
+    ],
+  ) {
     this.definitions = definitions;
   }
 
@@ -276,6 +295,9 @@ export class MissionSystem {
       objectiveHint: def.objectiveHint,
       rewardXp: def.rewardXp,
       rewardRep: def.rewardRep,
+      rewardPoints: def.rewardPoints ?? Math.max(10, Math.floor(def.rewardXp * 0.5)),
+      isHidden: def.isHidden,
+      discovered: true,
       objectives,
       category: def.category,
     };
@@ -289,11 +311,29 @@ export class MissionSystem {
   }
 
   private getActiveDefinition(): MissionDefinition | undefined {
-    // Catalogs are ordered; only the first incomplete mission is active.
-    return this.definitions.find((def) => !this.completed.has(def.id));
+    // Catalogs are ordered; the first incomplete mission the player's level
+    // actually qualifies for is active. A mission whose minimumLevel exceeds
+    // the player's current level is skipped over (not just "next up") so a
+    // low-level player is never assigned endgame-bracket content they can't
+    // possibly attempt yet — see MissionDefinition.minimumLevel.
+    return this.definitions.find(
+      (def) => !this.completed.has(def.id) && (def.minimumLevel == null || this.playerLevel >= def.minimumLevel),
+    );
+  }
+
+  /** True if at least one remaining (incomplete) mission is level-locked above the player's current level. */
+  hasLevelLockedContent(): boolean {
+    return this.definitions.some(
+      (def) => !this.completed.has(def.id) && def.minimumLevel != null && this.playerLevel < def.minimumLevel,
+    );
   }
 }
 
 export function createStarterMissionSystem(): MissionSystem {
-  return new MissionSystem([...STARTER_MISSIONS, ...STORY_MISSIONS]);
+  return new MissionSystem([
+    ...STARTER_MISSIONS,
+    ...LEVEL_TWO_MISSIONS,
+    ...STORY_MISSIONS,
+    ...BRACKET_MISSIONS,
+  ]);
 }
