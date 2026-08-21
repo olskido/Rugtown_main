@@ -6331,6 +6331,19 @@
   border: 1px solid rgba(200, 144, 42, 0.25);
 }
 
+.profile-signout-btn {
+  margin-top: 14px;
+  background: rgba(220, 90, 70, 0.12);
+  border-color: rgba(220, 90, 70, 0.4);
+  color: #f0a890;
+}
+
+.profile-signout-btn:hover {
+  background: rgba(220, 90, 70, 0.22);
+  border-color: rgba(220, 90, 70, 0.6);
+  filter: none;
+}
+
 .level-up-toast {
   position: absolute;
   top: 18%;
@@ -6354,6 +6367,26 @@
   inset: -20px;
   background: radial-gradient(circle, rgba(232, 184, 75, 0.22), transparent 65%);
   pointer-events: none;
+}
+
+.level-up-toast__close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  /* The toast itself is pointer-events:none (a non-blocking overlay) --
+     re-enable just the close button so it's actually clickable. */
+  pointer-events: auto;
+  background: none;
+  border: none;
+  color: #7a6a52;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.level-up-toast__close:hover {
+  color: #e8b84b;
 }
 
 .level-up-toast__label {
@@ -6681,7 +6714,7 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
-  padding: 4px 16px;
+  padding: 5px 16px 7px;
 
   background: rgba(6, 10, 14, 0.93);
   border: 1px solid rgba(200, 144, 42, 0.28);
@@ -6689,14 +6722,19 @@
   box-shadow: 0 -2px 18px rgba(0, 0, 0, 0.35);
 
   font-family: 'Cinzel', serif;
-  white-space: nowrap;
-  max-width: min(520px, 82vw);
+  /* Bug fix: nowrap here forced the whole objective line onto one row,
+     so it visibly overflowed the box on longer missions ("New Degen
+     Tutorial" among them). Only the short top status row needs nowrap;
+     the fuller bottom row now wraps and stays inside the box. */
+  max-width: min(560px, 88vw);
 }
 
 .mission-hud__top {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .mission-hud__level {
@@ -6728,7 +6766,10 @@
 .mission-hud__bottom {
   display: flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+  text-align: center;
 }
 
 .mission-hud__title {

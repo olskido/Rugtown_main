@@ -1426,6 +1426,9 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         if (cancelled) return;
         sceneRef.current = scene;
         setReady(true);
+        // Marks "loaded" for the music system's ~3s delayed ambient start
+        // (soundManager.ts) -- doesn't play anything itself.
+        soundManager.notifyGameReady();
         setWorldSize(scene.getWorldSize());
 
         try {
@@ -4170,7 +4173,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                   🎯 Reset Camera
                 </button>
 
-                {/* ── Account ── shown only when signed in via Supabase ── */}
+                {/* ── Account ── signed in via Supabase (wallet or email) ── */}
                 {(walletAddress || userEmail) && (
                   <div className="settings-mute-row settings-account-row">
                     <span className="settings-account-email" title={walletAddress ?? userEmail ?? ''}>
@@ -4185,6 +4188,22 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                         Disconnect
                       </button>
                     )}
+                  </div>
+                )}
+
+                {/* ── Guest mode ── same slot, guest-framed: not "signed
+                    in" to disconnect from, but they still need a clear,
+                    visible way back to the homepage to sign in properly. */}
+                {!walletAddress && !userEmail && onLogout && (
+                  <div className="settings-mute-row settings-account-row">
+                    <span className="settings-account-email">Guest Mode</span>
+                    <button
+                      className="settings-mute-btn settings-mute-btn--muted"
+                      onClick={onLogout}
+                      aria-label="Leave guest mode and return to homepage to sign in"
+                    >
+                      🏠 Exit to Homepage
+                    </button>
                   </div>
                 )}
               </div>
@@ -4869,6 +4888,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           username={playerName || 'DegenExplorer'}
           holderTier={holderTier}
           onEquipTitle={(id) => progressionService.equipTitle(id)}
+          onSignOut={onLogout}
         />
       )}
 

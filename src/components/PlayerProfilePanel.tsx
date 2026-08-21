@@ -17,6 +17,9 @@ export interface PlayerProfilePanelProps {
   holderTier: string;
   online?: boolean;
   onEquipTitle: (titleId: string) => void;
+  /** Signs out (guest or authenticated) and returns to the homepage.
+   *  Shown for every account type, not just signed-in ones. */
+  onSignOut?: () => void;
 }
 
 export function PlayerProfilePanel({
@@ -27,6 +30,7 @@ export function PlayerProfilePanel({
   holderTier,
   online = true,
   onEquipTitle,
+  onSignOut,
 }: PlayerProfilePanelProps) {
   if (!open) return null;
 
@@ -174,6 +178,17 @@ export function PlayerProfilePanel({
             <p className="profile-guest-warn">
               Guest progress is saved in this browser. Clearing site data will erase it — sign in to keep a stable identity.
             </p>
+          )}
+
+          {onSignOut && (
+            <button
+              type="button"
+              className="settings-action-btn profile-signout-btn"
+              onClick={onSignOut}
+              aria-label={progression.isGuest ? 'Leave guest mode and return to homepage to sign in' : 'Sign out and return to homepage'}
+            >
+              {progression.isGuest ? '🏠 Exit to Homepage' : '🚪 Sign Out'}
+            </button>
           )}
         </div>
       </div>

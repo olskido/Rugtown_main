@@ -35,6 +35,12 @@ export function LevelUpToast({ notice, onDismiss }: LevelUpToastProps) {
 
   return (
     <div className="level-up-toast" role="status" aria-live="polite" data-ui-block-camera>
+      <button
+        className="level-up-toast__close"
+        onClick={() => { setVisible(false); onDismiss(); }}
+        aria-label="Dismiss"
+        title="Dismiss"
+      >✕</button>
       <div className="level-up-toast__burst" aria-hidden />
       <span className="level-up-toast__label">Level Up</span>
       <span className="level-up-toast__level">{notice.toLevel}</span>

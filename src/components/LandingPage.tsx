@@ -1,38 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { FeatureCard } from './FeatureCard';
-import { subscribeCityPresenceCount, type PresenceCountState } from '../lib/presence';
-import { isSupabaseConfigured } from '../lib/supabase';
 import { HOMEPAGE_VISUAL } from '../config/homepageVisual';
 
 /*
-  LandingPage — matches Image 2 (05-homepage.png) as source of truth
+  LandingPage — compact center card, no live/mock stats or network badge.
 
-  Layout breakdown from Image 2:
   ┌─────────────────────────────────────────────────────────────┐
   │  BACKGROUND: Full-screen isometric city illustration        │
-  │  (dark teal-green with warm amber lantern lights)           │
-  │                                                             │
-  │              ┌─────────────────────┐                        │
-  │              │ [ornate arch icon]  │                        │
-  │              │    R U G T O W N   │ ← double gold border   │
-  │              │ Survive or Get      │   ornate corners       │
-  │              │ Rugged.             │                        │
-  │              │ ─────────────────── │                        │
-  │              │ [▶ ENTER THE CITY ] │ ← gold filled button  │
-  │              │ [Live Players][Wallet] ← ghost buttons      │
-  │              │ [Alpha Calls][Activity]                      │
-  │              └─────────────────────┘                        │
-  │                                                             │
+  │              ┌───────────────┐                               │
+  │              │ [arch icon]   │                               │
+  │              │   R U G T O W N │ ← double gold border        │
+  │              │ Survive or Get│                                │
+  │              │ ────────────  │                                │
+  │              │ [▶ ENTER]     │ ← gold filled button          │
+  │              │ [Leaders][Hid]│                                │
+  │              └───────────────┘                               │
   │ [Explore][Trade][Compete][Earn Rep][Badges][Holder Perks]  │
   └─────────────────────────────────────────────────────────────┘
 */
-
-// Live stats — NPC count is session-local; real player count comes from
-// Supabase presence when configured (never faked).
-const MOCK_STATS = {
-  npcCitizens: 10,
-  alphaCalls: 38,
-};
 
 // Feature cards matching RugTown's social progression pillars
 const FEATURES = [
@@ -74,29 +59,6 @@ function generateParticles(count: number): Particle[] {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Animated stat counter
-// ──────────────────────────────────────────────────────────────
-function useCountUp(target: number, duration: number = 1200, delay: number = 0): number {
-  const [current, setCurrent] = useState(0);
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      const start = performance.now();
-      const step = (now: number) => {
-        const elapsed = now - start;
-        const progress = Math.min(elapsed / duration, 1);
-        // Ease out cubic
-        const eased = 1 - Math.pow(1 - progress, 3);
-        setCurrent(Math.round(eased * target));
-        if (progress < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    }, delay);
-    return () => clearTimeout(timeout);
-  }, [target, duration, delay]);
-  return current;
-}
-
-// ──────────────────────────────────────────────────────────────
 // Main Component
 // ──────────────────────────────────────────────────────────────
 interface LandingPageProps {
@@ -118,22 +80,6 @@ export function LandingPage({ onEnterRugtown }: LandingPageProps) {
     const t = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(t);
   }, []);
-
-  // Animated stat counters — stagger each one (NPC / alpha only)
-  const npcCount      = useCountUp(MOCK_STATS.npcCitizens, 800, 1000);
-  const alphaCount    = useCountUp(MOCK_STATS.alphaCalls, 1000, 1100);
-
-  /* ── Real player count from Supabase presence (never faked) ── */
-  const [presenceState, setPresenceState] = useState<PresenceCountState>(() =>
-    isSupabaseConfigured ? { status: 'connecting' } : { status: 'unavailable' },
-  );
-  useEffect(() => subscribeCityPresenceCount(setPresenceState), []);
-
-  const realPlayersLabel = (() => {
-    if (presenceState.status === 'connected') return presenceState.count.toLocaleString();
-    if (presenceState.status === 'connecting') return 'Connecting…';
-    return '—';
-  })();
 
   return (
     <div className={`landing screen-enter ${mounted ? 'landing--mounted' : ''}`}>
@@ -287,27 +233,7 @@ export function LandingPage({ onEnterRugtown }: LandingPageProps) {
                 <span className="btn__label">ENTER RUGTOWN</span>
               </button>
 
-                {/* Secondary row — "Live Players" + "Missions & Quests" */}
-                <div className="card__btn-row">
-                  <button
-                    className="btn btn--secondary"
-                    aria-label="Real players currently online"
-                  >
-                    <span className="btn__dot btn__dot--live" aria-hidden />
-                    <span>Live Players</span>
-                  </button>
-
-                  <button
-                    className="btn btn--secondary"
-                    onClick={onEnterRugtown}
-                    aria-label="Daily & Weekly Missions"
-                  >
-                    <span className="btn__icon" aria-hidden>📜</span>
-                    <span>100 Levels & Quests</span>
-                  </button>
-                </div>
-
-                {/* Tertiary row — "Hall of Fame" + "Leaderboards" */}
+                {/* Secondary row — "Hall of Fame" + "Leaderboards" */}
                 <div className="card__btn-row">
                   <button className="btn btn--ghost" onClick={onEnterRugtown}>
                     <span className="btn__icon" aria-hidden>🏆</span>
@@ -318,34 +244,6 @@ export function LandingPage({ onEnterRugtown }: LandingPageProps) {
                     <span className="btn__icon" aria-hidden>🔍</span>
                     <span>Hidden Quests</span>
                   </button>
-                </div>
-
-                {/* ── LIVE STATS ── */}
-                {/* Small stat pills below buttons */}
-                <div className="card__stats" role="status" aria-live="polite" aria-label="Live city stats">
-                  <div className="stat">
-                    <span className="stat__dot stat__dot--live" aria-hidden />
-                    <span className="stat__value">{realPlayersLabel}</span>
-                    <span className="stat__label">Real Players</span>
-                  </div>
-                  <div className="stat__divider" aria-hidden>·</div>
-                  <div className="stat">
-                    <span className="stat__dot" aria-hidden />
-                    <span className="stat__value">{npcCount}</span>
-                    <span className="stat__label">NPC Citizens</span>
-                  </div>
-                  <div className="stat__divider" aria-hidden>·</div>
-                  <div className="stat">
-                    <span className="stat__dot stat__dot--amber" aria-hidden />
-                    <span className="stat__value">{alphaCount}</span>
-                    <span className="stat__label">Alpha Calls Today</span>
-                  </div>
-                </div>
-
-                {/* Network badge */}
-                <div className="card__network-badge" aria-label="Running on Solana devnet">
-                  <span className="badge__dot" aria-hidden />
-                  <span>DEVNET · MOCK MODE · $RUGTOWN SOON</span>
                 </div>
 
               </div>

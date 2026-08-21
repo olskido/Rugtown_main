@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import './styles/global.css';
 import './styles/landing.css';
@@ -8,8 +8,13 @@ import { LandingPage } from './components/LandingPage';
 import { UsernameOnboardingPage } from './components/UsernameOnboardingPage';
 import { AuthPage } from './components/AuthPage';
 import { AuthCallbackPage } from './components/AuthCallbackPage';
-import { OutfitSelectPage } from './components/OutfitSelectPage';
-import { GamePage } from './components/GamePage';
+// Lazy-loaded: both pull in Phaser + the full character-rendering pipeline
+// (by far the largest chunk in the app). Loading them eagerly meant every
+// visitor downloaded and parsed that whole bundle just to see the landing
+// page. Splitting them out means the homepage's own JS payload stays small
+// and the game bundle only loads once the player actually heads toward it.
+const OutfitSelectPage = lazy(() => import('./components/OutfitSelectPage').then((m) => ({ default: m.OutfitSelectPage })));
+const GamePage = lazy(() => import('./components/GamePage').then((m) => ({ default: m.GamePage })));
 import { getCanonicalPlayerAppearance } from './game/characters/appearance/CanonicalPlayerAppearance';
 import { soundManager } from './audio/SoundManager';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
@@ -453,6 +458,25 @@ export default function App() {
   }
 
   return (
+    <Suspense
+      fallback={(
+        <div className="landing landing--mounted screen-enter" role="status" aria-live="polite">
+          <div className="landing__bg" aria-hidden>
+            <div className="landing__bg-city" />
+            <div className="landing__vignette-warm" />
+            <div className="landing__overlay" />
+          </div>
+          <main className="landing__content">
+            <div className="landing__card" style={{ maxWidth: 280, padding: 24, textAlign: 'center' }}>
+              <div className="card__logo-text" style={{ fontSize: 22 }}>RUGTOWN</div>
+              <p style={{ marginTop: 12, color: '#c8b89a', fontFamily: 'Cinzel, serif', fontSize: 12 }}>
+                Loading…
+              </p>
+            </div>
+          </main>
+        </div>
+      )}
+    >
     <Routes>
       <Route path="/" element={<LandingPage onEnterRugtown={handleEnterRugtown} />} />
       <Route path="/wallet" element={<Navigate to="/auth" replace />} />
@@ -515,5 +539,6 @@ export default function App() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }

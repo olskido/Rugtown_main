@@ -251,7 +251,10 @@
 .landing__card {
   position: relative;
   width: 100%;
-  max-width: min(322px, 92vw);
+  /* Shrunk + decluttered per product request: removed the live/mock stats
+     row and network badge, and tightened this box substantially so it no
+     longer dominates the homepage. */
+  max-width: min(230px, 86vw);
 
   /* Card background — deep dark matching Image 1 panels */
   background: rgba(4, 8, 12, 0.94);
@@ -324,13 +327,13 @@
 
 /* ── Card inner ── */
 .card__inner {
-  padding: clamp(14px, 3.2vh, 24px) clamp(14px, 4vw, 24px) clamp(12px, 2.5vh, 20px);
+  padding: clamp(10px, 2.2vh, 16px) clamp(10px, 3vw, 16px) clamp(8px, 1.8vh, 14px);
 }
 
 /* ── Logo section ── */
 .card__logo-section {
   text-align: center;
-  margin-bottom: clamp(12px, 2.5vh, 20px);
+  margin-bottom: clamp(8px, 1.8vh, 14px);
 }
 
 /* Arch icon above logo — decorative architectural motif from Image 2 */
@@ -440,6 +443,11 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+/* Single-column variant — a row with just one full-width button */
+.card__btn-row--single {
+  grid-template-columns: 1fr;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -631,84 +639,6 @@
   color: var(--text-base);
 }
 
-/* ── Live Stats ── */
-.card__stats {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 10px 0 4px;
-  animation: statPulse 0.5s var(--ease-gold) 1s both;
-}
-
-.stat {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--font-body);
-  font-size: 10px;
-}
-
-.stat__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-faint);
-  flex-shrink: 0;
-}
-
-.stat__dot--live {
-  background: #16c85a;
-  box-shadow: 0 0 6px rgba(22, 200, 90, 0.5);
-  animation: dotPulse 2s ease-in-out infinite;
-}
-
-.stat__dot--amber {
-  background: var(--amber);
-  box-shadow: 0 0 5px rgba(232, 112, 32, 0.4);
-}
-
-.stat__value {
-  font-family: var(--font-title);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--gold-300);
-  min-width: 24px;
-  text-align: right;
-}
-
-.stat__label {
-  color: var(--text-dim);
-  font-size: 9px;
-  letter-spacing: 0.04em;
-}
-
-.stat__divider {
-  color: var(--text-faint);
-  font-size: 10px;
-}
-
-/* ── Network badge ── */
-.card__network-badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0;
-  font-family: var(--font-mono);
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  color: var(--text-faint);
-}
-
-.badge__dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--amber);
-  opacity: 0.7;
-}
 
 /* ── Guest mode ── */
 .card__guest-mode {
@@ -1030,11 +960,11 @@
   }
 
   .landing__card {
-    max-width: min(300px, 92vw);
+    max-width: min(230px, 88vw);
   }
 
   .card__inner {
-    padding: 16px 16px 12px;
+    padding: 12px 12px 10px;
   }
 
   .card__arch-icon {
@@ -1105,12 +1035,6 @@
   .feature-card__label {
     font-size: 9px;
   }
-
-  .card__stats {
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 360px) {
@@ -1120,7 +1044,7 @@
   }
 
   .landing__card {
-    max-width: min(288px, 94vw);
+    max-width: min(210px, 90vw);
   }
 
   .btn--primary {
