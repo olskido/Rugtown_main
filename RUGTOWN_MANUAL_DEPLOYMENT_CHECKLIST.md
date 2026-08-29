@@ -1,6 +1,8 @@
-# RugTown — Manual Deployment Checklist (Phase 0.5 → Phase 2)
+# RugTown — Manual Deployment Checklist (Phase 0.5 → Phase 3)
 
-Consolidated checklist covering everything that requires a human/ops action outside of the code itself, across Phase 0.5, Phase 1, and Phase 2. Individual phase reports (`RUGTOWN_PHASE_0_5_SECURITY_HARDENING_REPORT.md`, `RUGTOWN_PHASE_1_GOOGLE_AUTH_REPORT.md`, `RUGTOWN_MASTER_IMPLEMENTATION_REPORT.md`, `RUGTOWN_FINAL_IMPLEMENTATION_REPORT.md`) contain the reasoning behind each step; this file is the do-this-in-order reference.
+Consolidated checklist covering everything that requires a human/ops action outside of the code itself, across Phase 0.5, Phase 1, Phase 2, and Phase 3. Individual phase reports (`RUGTOWN_PHASE_0_5_SECURITY_HARDENING_REPORT.md`, `RUGTOWN_PHASE_1_GOOGLE_AUTH_REPORT.md`, `RUGTOWN_MASTER_IMPLEMENTATION_REPORT.md`, `RUGTOWN_FINAL_IMPLEMENTATION_REPORT.md`) contain the reasoning behind each step; this file is the do-this-in-order reference.
+
+**Phase 3 (2026-08-23) removes Google OAuth and email/password sign-in from the app entirely**, replacing them with Guest / anonymous-auth New Sign Up / recovery-code Restore. Phase 1's Google OAuth dashboard configuration (§2 below) is now obsolete for new sign-ins but is left documented for historical reference — see §8 for what's new and what to disable.
 
 **Phase 0.5 and Phase 1 are already applied to the real Supabase project — do not run them again.** Phase 2 failed on its first attempt and has been fixed in place. See §0 before doing anything else.
 
@@ -73,6 +75,10 @@ Apply against a **staging** Supabase project first, verify §5's queries, then a
 
 -- REMAINING — run this one (now fixed, see §0):
 20260820_phase2_progression_leaderboards_quests.sql
+
+-- Phase 3 (new, see §8):
+20260823_phase3_recovery_code_auth.sql
+20260823_phase3c_contact_email.sql   -- optional email captured at New Sign Up (see §8.F)
 ```
 
 Each file is written against the schema state left by the one before it — do not skip or reorder. There is no `20260820_phase2_1_repair.sql` or similar — the fix lives inside the Phase 2 file itself.
@@ -151,3 +157,82 @@ Also spot-check that `rt_grant_title`, the internal helper RPCs, and the mainten
 ## 7. Rollback note
 
 All Phase 2 RPCs are `CREATE OR REPLACE FUNCTION` and all new tables are additive — there is no destructive schema change in this migration. If a rollback is needed, the safest path is to revoke/disable the new RPCs' grants (rather than dropping tables that may already hold player reward data) and revert the client build to the pre-Phase-2 commit.
+
+---
+
+## 8. Phase 3 — lightweight account system (no Google, no email/password)
+
+**What changed:** `AuthPage.tsx` no longer offers Google OAuth or email/password sign-in. There are now exactly three options: Sign in as Guest (unchanged), New Sign Up (username only, backed by Supabase anonymous auth), and Restore with Code (resume an existing account on a new device using a 10-character recovery code, shown once from the Profile panel). The `/auth/callback` route, `AuthCallbackPage.tsx`, and `src/lib/authRedirect.ts` are no longer wired into the app — left in place, unreferenced, rather than deleted, per this project's established convention of not removing files whose necessity isn't certain. Full code is in `RUGTOWN_FINAL_IMPLEMENTATION_REPORT.md`.
+
+**⚠️ Explicit, informed product decision — existing Google-authenticated accounts are cut off.** This migration and UI change do **not** migrate or preserve access to any account that only ever signed in via Google (or the old email/password flow). Once this ships, that sign-in path is gone from the UI entirely; anyone who did not generate a recovery code beforehand has **no way back into that account** — there is no support/manual-recovery path either, since the server never learns which human owns which account beyond the recovery-code hash. This was surfaced to and explicitly chosen by the product owner, not decided unilaterally. If this is not actually acceptable at deploy time, **do not ship this phase** — say so before applying the migration or deploying the Edge Function, since there is no clean way to reverse it once players start signing up fresh under the new system.
+
+### A. What to run
+
+```
+RUN THIS (staging first, then production):
+  20260823_phase3_recovery_code_auth.sql
+```
+
+Safe to re-run (`CREATE OR REPLACE` / `IF NOT EXISTS` / `ON CONFLICT` throughout). Purely additive — creates two new tables (`account_recovery_codes`, `recovery_code_rate_limit`) and three new functions (`rt_generate_recovery_code_plaintext`, `generate_my_recovery_code`, `has_my_recovery_code`); does not alter or drop anything from earlier phases. Also runs `CREATE EXTENSION IF NOT EXISTS pgcrypto;` — the first use of `pgcrypto`/`digest()` in this project; confirm the Supabase project allows it (it does by default on all standard Supabase plans).
+
+### B. Deploy the new Edge Function
+
+```
+supabase functions deploy redeem-recovery-code
+```
+
+- Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as function secrets — both already configured in this project (every existing Edge Function depends on them), so no new secrets are needed.
+- This function is **deliberately unauthenticated** (no bearer token required) — that's the whole point, since the caller has no session yet on a new device. It is protected instead by hash-only code storage (the plaintext code is never stored anywhere, only its SHA-256 hash) and by an IP-based rate limit (8 attempts / 15 minutes, enforced in-function via `recovery_code_rate_limit`).
+
+### C. Supabase Dashboard configuration — REQUIRED
+
+- **Enable Anonymous Sign-ins**: Authentication → Providers (or Authentication → Settings, depending on dashboard version) → toggle **"Allow anonymous sign-ins"** ON. `supabase.auth.signInAnonymously()` (used by New Sign Up) fails outright if this is off — this is the single most important step in this section; without it, every new signup attempt breaks.
+- **Google OAuth provider**: can now be safely disabled (Authentication → Providers → Google → off) since the UI no longer offers it. Not strictly required to disable — the app simply never calls it anymore — but leaving it enabled with no UI entry point serves no purpose and slightly increases attack surface.
+- No other dashboard changes required. RLS is already enabled on both new tables with zero policies (by design — see the migration's own comments); this doesn't need dashboard verification since it's enforced entirely by the migration.
+
+### D. Verification queries (run on staging first)
+
+```sql
+-- As an authenticated (anonymous-auth) test user:
+select generate_my_recovery_code();     -- expect {ok:true, code:"<10 chars>"} — save the code shown
+select has_my_recovery_code();          -- expect {hasCode:true, createdAt:"..."}
+select generate_my_recovery_code();     -- run again — expect a DIFFERENT code; the first one must now be invalid
+```
+
+```
+# Then, from a fresh browser session (or curl) with NO auth header:
+curl -X POST https://<project>.supabase.co/functions/v1/redeem-recovery-code \
+  -H "Content-Type: application/json" \
+  -d '{"code":"<the second code from above>"}'
+-- expect {ok:true, tokenHash:"..."} — the FIRST (invalidated) code must instead return 404 invalid_code
+```
+
+Also manually walk the UI once end-to-end: New Sign Up on device/browser A → generate a recovery code from Profile → open a fresh private/incognito window (device/browser B) → Restore with Code → confirm it lands on the same account (same username, same progression), not a fresh one.
+
+### E. Rollback note
+
+Everything in this phase is additive (`CREATE OR REPLACE` / `IF NOT EXISTS`); rolling back the schema is not required to roll back the feature. To revert the UI/behavior only: redeploy the previous client build (with the old `AuthPage.tsx`) and leave the migration and Edge Function in place — they're inert if the UI stops calling them. Do not drop `account_recovery_codes` if any player has already generated a code; doing so would strand anyone relying on it mid-transition.
+
+### F. Phase 3c — optional contact email at New Sign Up
+
+**What changed:** New Sign Up is now two steps — email, then username — before the account is created. The email is **not** used for authentication, verification, or login; nothing is ever sent to it. It's stored purely as metadata for a possible future "email me my recovery code" feature.
+
+```
+RUN THIS (staging first, then production):
+  20260823_phase3c_contact_email.sql
+```
+
+Additive, safe to re-run. Creates one new table, `player_contact_emails`, with owner-only RLS (`auth.uid() = player_id` for select/insert/update — nobody else, not even other authenticated players, can read any row). **Deliberately not a column on `profiles`** — that table has a `USING (true)` public-read policy for leaderboards/multiplayer, so every column on it is readable by any client, including the anon key with no session. Putting a raw email there would leak every player's email to any visitor.
+
+No dashboard config or Edge Function changes needed for this part — it's a plain client `.upsert()` protected entirely by RLS, no service role involved.
+
+**Verification:**
+```sql
+-- As an authenticated test user, after signing up with an email in the UI:
+select email from public.player_contact_emails where player_id = auth.uid();
+-- expect the email you entered
+
+-- As a DIFFERENT authenticated user, confirm you cannot read someone else's:
+select * from public.player_contact_emails where player_id = '<some other uid>';
+-- expect zero rows (RLS silently filters it out, not an error)
+```

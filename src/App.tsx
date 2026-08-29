@@ -7,7 +7,6 @@ import './styles/auth.css';
 import { LandingPage } from './components/LandingPage';
 import { UsernameOnboardingPage } from './components/UsernameOnboardingPage';
 import { AuthPage } from './components/AuthPage';
-import { AuthCallbackPage } from './components/AuthCallbackPage';
 // Lazy-loaded: both pull in Phaser + the full character-rendering pipeline
 // (by far the largest chunk in the app). Loading them eagerly meant every
 // visitor downloaded and parsed that whole bundle just to see the landing
@@ -39,10 +38,15 @@ import { WORLD_H as WORLD_HEIGHT, WORLD_W as WORLD_WIDTH } from './game/world/Ne
 /*
   App.tsx — routed screens + auth hydration + session restore on refresh.
 
+  Phase 3 — lightweight account system (no Google, no email/password). Both
+  new-signup (anonymous auth) and restore-with-code (verifyOtp) resolve
+  synchronously in the current tab, so there's no OAuth-style redirect
+  round-trip and no /auth/callback route anymore.
+
   /                     Landing
-  /auth                 Sign in with Google / Email
-  /auth/callback        OAuth / Email confirmation callback
-  /onboarding/username  Username selection for new Google/Email players
+  /auth                 Guest / New Sign Up (username) / Restore with Code
+  /onboarding/username  Username selection (legacy path; new accounts pick
+                        their username directly on /auth instead)
   /character            Nickname / outfit gate
   /play                 Game (restores last safe position from local session)
 */
@@ -55,7 +59,6 @@ interface AuthUser {
 }
 
 function pathToRoute(pathname: string): RugTownRoute {
-  if (pathname.startsWith('/auth/callback')) return '/auth/callback';
   if (pathname.startsWith('/onboarding/username')) return '/onboarding/username';
   if (pathname.startsWith('/auth')) return '/auth';
   if (pathname.startsWith('/character')) return '/character';
@@ -76,7 +79,6 @@ export default function App() {
   const [initialDistrictIds, setInitialDistrictIds] = useState<string[]>([]);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState(true);
-  const [authCallbackError, setAuthCallbackError] = useState<string | null>(null);
   const [restorePosition, setRestorePosition] = useState<{ x: number; y: number } | null>(null);
   const [routeReady, setRouteReady] = useState(false);
 
@@ -327,8 +329,8 @@ export default function App() {
 
   const handleAuthContinue = useCallback(() => {
     // Defense in depth: a signed-in user can reach /auth's "Continue" button
-    // directly (browser back, bookmark) outside the OAuth-callback path
-    // below. onboardingCompleted is authoritative server state by this point
+    // directly (browser back, bookmark). onboardingCompleted is authoritative
+    // server state by this point
     // (hydration has already completed, since this route only renders once
     // routeReady is true), so honour it here too -- never send an
     // incomplete profile to the game.
@@ -336,34 +338,6 @@ export default function App() {
     if (dest === '/character') saveRugTownSession({ route: '/character' }, user?.id ?? null);
     navigate(dest);
   }, [navigate, user?.id, onboardingCompleted]);
-
-  /**
-   * OAuth (and email-confirmation-link) callback success. `needsOnboarding`
-   * is computed by AuthCallbackPage from a fresh, direct
-   * getRugtownProfileState() call made right after the session was
-   * established -- NOT from this component's own hydration state, which
-   * races the OAuth redirect: on first return from Google, the initial
-   * getSession() resolves with no session (the PKCE code hasn't been
-   * exchanged yet), so the one-shot post-hydration onboarding check fires
-   * early as a 'guest' and is never re-armed once the real session lands via
-   * SIGNED_IN. See the Phase 1 report for the full trace. Routing directly
-   * from the callback's own fresh profile check sidesteps that race
-   * entirely instead of trying to re-time the existing hydration guard.
-   */
-  const handleAuthCallbackSuccess = useCallback((opts: { needsOnboarding: boolean }) => {
-    setAuthCallbackError(null);
-    if (opts.needsOnboarding) {
-      navigate('/onboarding/username', { replace: true });
-    } else {
-      saveRugTownSession({ route: '/character' }, user?.id ?? null);
-      navigate('/character', { replace: true });
-    }
-  }, [navigate, user?.id]);
-
-  const handleAuthCallbackFailure = useCallback((message: string) => {
-    setAuthCallbackError(message);
-    navigate('/auth', { replace: true });
-  }, [navigate]);
 
   const handleAuthSignInAttempt = useCallback(() => {
     authActionPendingRef.current = true;
@@ -493,20 +467,10 @@ export default function App() {
             loggedInEmail={user?.email ?? null}
             loggedInUsername={playerName || null}
             isLoggedIn={!!user}
-            initialError={authCallbackError}
             onContinue={handleAuthContinue}
             onGuest={handleGuestFromAuth}
             onSignInAttempt={handleAuthSignInAttempt}
             onSignUpAttempt={handleAuthSignUpAttempt}
-          />
-        )}
-      />
-      <Route
-        path="/auth/callback"
-        element={(
-          <AuthCallbackPage
-            onSuccess={handleAuthCallbackSuccess}
-            onFailure={handleAuthCallbackFailure}
           />
         )}
       />

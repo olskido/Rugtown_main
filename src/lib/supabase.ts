@@ -194,6 +194,14 @@ export interface DbRpcMap {
     Args: Record<string, never>;
     Returns: RugtownProfileState | null;
   };
+  generate_my_recovery_code: {
+    Args: Record<string, never>;
+    Returns: { ok: boolean; code: string };
+  };
+  has_my_recovery_code: {
+    Args: Record<string, never>;
+    Returns: { hasCode: boolean; createdAt?: string };
+  };
   check_username_available: {
     Args: { p_username: string };
     Returns: boolean;
@@ -362,8 +370,9 @@ if (!isSupabaseConfigured) {
  *
  * Auth options:
  * - PKCE flow; session persisted in localStorage with auto refresh.
- * - detectSessionInUrl is false — `/auth/callback` exchanges the code once
- *   via `handleAuthCallback()` so we never double-consume the PKCE code.
+ * - detectSessionInUrl is false — Phase 3 sign-in (anonymous sign-up,
+ *   recovery-code verifyOtp) resolves synchronously in the current tab;
+ *   there's no redirect-based flow left that needs URL detection.
  */
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
