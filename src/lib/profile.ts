@@ -361,3 +361,29 @@ export async function updateLastSeen(userId: string): Promise<void> {
     .update({ last_seen_at: new Date().toISOString() })
     .eq('id', userId);
 }
+
+/* ─── contact email (Phase 3c) ───────────────────────────────────
+ * Captured at New Sign Up, purely as recovery/contact metadata -- not used
+ * for authentication or verification, no email is ever sent to it. Stored
+ * in its own owner-only-readable table (see 20260823_phase3c_contact_email.sql),
+ * never on `profiles`, which is world-readable via RLS. */
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function isValidEmail(email: string): boolean {
+  return EMAIL_PATTERN.test(email.trim());
+}
+
+export async function saveMyContactEmail(
+  userId: string,
+  email: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!supabase) return { ok: false, error: 'Supabase not configured.' };
+  const clean = email.trim().toLowerCase();
+  if (!isValidEmail(clean)) return { ok: false, error: 'invalid_email' };
+
+  const { error } = await supabase
+    .from('player_contact_emails')
+    .upsert({ player_id: userId, email: clean, updated_at: new Date().toISOString() }, { onConflict: 'player_id' });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}

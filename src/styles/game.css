@@ -6331,6 +6331,50 @@
   border: 1px solid rgba(200, 144, 42, 0.25);
 }
 
+.profile-recovery-code {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-recovery-code__hint {
+  font-size: 10px;
+  color: #8a7a68;
+  margin: 0;
+}
+
+.profile-recovery-code__reveal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(200, 144, 42, 0.35);
+}
+
+.profile-recovery-code__value {
+  flex: 1;
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #e8d5a3;
+  user-select: all;
+}
+
+.profile-recovery-code__copy {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.profile-recovery-code__warn {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 10px;
+  color: #e8b84b;
+  background: rgba(200, 144, 42, 0.08);
+  border: 1px solid rgba(200, 144, 42, 0.25);
+}
+
 .profile-signout-btn {
   margin-top: 14px;
   background: rgba(220, 90, 70, 0.12);

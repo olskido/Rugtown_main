@@ -2,12 +2,14 @@
  * PlayerProfilePanel.tsx — full identity / progression profile (Phase 10F).
  */
 
+import { useEffect, useState } from 'react';
 import type { PlayerProgression } from '../game/progression/types';
 import { ACHIEVEMENT_CATALOG } from '../game/progression/AchievementCatalog';
 import { rankDisplayName } from '../game/progression/RankLadder';
 import { shouldShowSeasonUi } from '../game/progression/SeasonFoundation';
 import { TITLE_CATALOG, titleDisplayName } from '../game/progression/TitleCatalog';
 import { levelProgressPercent } from '../game/progression/XpCurve';
+import { generateMyRecoveryCode, hasMyRecoveryCode } from '../lib/recoveryCode';
 
 export interface PlayerProfilePanelProps {
   open: boolean;
@@ -34,10 +36,73 @@ export function PlayerProfilePanel({
 }: PlayerProfilePanelProps) {
   if (!open) return null;
 
+  return <PlayerProfilePanelInner
+    onClose={onClose}
+    progression={progression}
+    username={username}
+    holderTier={holderTier}
+    online={online}
+    onEquipTitle={onEquipTitle}
+    onSignOut={onSignOut}
+  />;
+}
+
+function PlayerProfilePanelInner({
+  onClose,
+  progression,
+  username,
+  holderTier,
+  online,
+  onEquipTitle,
+  onSignOut,
+}: Omit<PlayerProfilePanelProps, 'open'>) {
+
   const xp = levelProgressPercent(progression.lifetimeXp);
   const completedAch = Object.values(progression.achievementProgress).filter((a) => a.completed).length;
   const showSeason = shouldShowSeasonUi(progression.season);
   const equippedName = titleDisplayName(progression.equippedTitleId);
+
+  // Recovery codes only apply to real (Supabase-backed) accounts — a guest
+  // session has no server-side account for a code to attach to.
+  const [recoveryStatus, setRecoveryStatus] = useState<'checking' | 'none' | 'has-code'>('checking');
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [recoveryCopied, setRecoveryCopied] = useState(false);
+
+  useEffect(() => {
+    if (progression.isGuest) return;
+    let cancelled = false;
+    hasMyRecoveryCode().then((status) => {
+      if (cancelled) return;
+      setRecoveryStatus(status.hasCode ? 'has-code' : 'none');
+    });
+    return () => { cancelled = true; };
+  }, [progression.isGuest]);
+
+  const handleGenerateRecoveryCode = async () => {
+    setRecoveryError(null);
+    setRecoveryBusy(true);
+    setRecoveryCopied(false);
+    const result = await generateMyRecoveryCode();
+    setRecoveryBusy(false);
+    if (!result.ok || !result.code) {
+      setRecoveryError(result.error || 'Could not generate a code. Please try again.');
+      return;
+    }
+    setRecoveryCode(result.code);
+    setRecoveryStatus('has-code');
+  };
+
+  const handleCopyRecoveryCode = async () => {
+    if (!recoveryCode) return;
+    try {
+      await navigator.clipboard.writeText(recoveryCode);
+      setRecoveryCopied(true);
+    } catch {
+      // Clipboard API unavailable — the code is still selectable on screen.
+    }
+  };
 
   return (
     <div
@@ -173,6 +238,53 @@ export function PlayerProfilePanel({
               ))}
             {completedAch === 0 && <li className="profile-empty">Complete discoveries and missions to earn achievements.</li>}
           </ul>
+
+          {!progression.isGuest && (
+            <>
+              <h3 className="profile-section-title">Recovery Code</h3>
+              <div className="profile-recovery-code">
+                <p className="profile-recovery-code__hint">
+                  Use this code to resume this exact account on another phone or browser.
+                </p>
+
+                {recoveryCode ? (
+                  <>
+                    <div className="profile-recovery-code__reveal">
+                      <code className="profile-recovery-code__value">{recoveryCode}</code>
+                      <button
+                        type="button"
+                        className="settings-action-btn profile-recovery-code__copy"
+                        onClick={handleCopyRecoveryCode}
+                      >
+                        {recoveryCopied ? 'Copied ✓' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="profile-recovery-code__warn">
+                      This is shown once. Save it now — you won't be able to view it again, only generate a new one (which replaces this one).
+                    </p>
+                  </>
+                ) : recoveryStatus === 'checking' ? (
+                  <p className="profile-empty">Checking…</p>
+                ) : (
+                  <>
+                    {recoveryStatus === 'has-code' && (
+                      <p className="profile-empty">You already have a recovery code saved. Generating a new one replaces it.</p>
+                    )}
+                    <button
+                      type="button"
+                      className="settings-action-btn"
+                      onClick={handleGenerateRecoveryCode}
+                      disabled={recoveryBusy}
+                    >
+                      {recoveryBusy ? 'Generating…' : recoveryStatus === 'has-code' ? 'Regenerate Code' : 'Generate Code'}
+                    </button>
+                  </>
+                )}
+
+                {recoveryError && <p className="auth-feedback auth-feedback--error">{recoveryError}</p>}
+              </div>
+            </>
+          )}
 
           {progression.isGuest && (
             <p className="profile-guest-warn">

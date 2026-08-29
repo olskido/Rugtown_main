@@ -14,7 +14,6 @@ export const SESSION_SCHEMA_VERSION = 2 as const;
 export type RugTownRoute =
   | '/'
   | '/auth'
-  | '/auth/callback'
   | '/wallet'
   | '/onboarding/username'
   | '/character'
@@ -82,7 +81,7 @@ function isFiniteNum(n: unknown): n is number {
 }
 
 function parseRoute(raw: unknown): RugTownRoute {
-  const allowed: RugTownRoute[] = ['/', '/auth', '/auth/callback', '/wallet', '/onboarding/username', '/character', '/play'];
+  const allowed: RugTownRoute[] = ['/', '/auth', '/wallet', '/onboarding/username', '/character', '/play'];
   return allowed.includes(raw as RugTownRoute) ? (raw as RugTownRoute) : '/';
 }
 
