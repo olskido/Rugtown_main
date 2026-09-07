@@ -181,6 +181,9 @@ Safe to re-run (`CREATE OR REPLACE` / `IF NOT EXISTS` / `ON CONFLICT` throughout
 supabase functions deploy redeem-recovery-code
 ```
 
+- The repository's `supabase/config.toml` sets `verify_jwt = false` for this
+  function. Keep that setting when deploying: restore starts without an
+  existing Supabase session, so the recovery code is the credential.
 - Requires `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as function secrets — both already configured in this project (every existing Edge Function depends on them), so no new secrets are needed.
 - This function is **deliberately unauthenticated** (no bearer token required) — that's the whole point, since the caller has no session yet on a new device. It is protected instead by hash-only code storage (the plaintext code is never stored anywhere, only its SHA-256 hash) and by an IP-based rate limit (8 attempts / 15 minutes, enforced in-function via `recovery_code_rate_limit`).
 
