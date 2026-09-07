@@ -272,6 +272,12 @@ export function drawWorldMap(
         ctx.fillText(lm.icon, p.x, p.y + 3);
       }
 
+      if (mode === 'expanded' && lm.enterable) {
+        ctx.strokeStyle = '#5ce1e6';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(p.x - r - 3, p.y - r - 3, (r + 3) * 2, (r + 3) * 2);
+      }
+
       drawCircle(ctx, p.x, p.y, r, fill, stroke, isSelected ? 2 : 1);
       if (lm.locked && mode === 'expanded') {
         ctx.font = '7px serif';

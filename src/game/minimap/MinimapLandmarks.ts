@@ -3,6 +3,7 @@
  */
 
 import { getWorldObject, isInteractionLive, WORLD_OBJECTS, type WorldObject } from '../world/WorldObjects';
+import { ENTERABLE_BUILDINGS } from '../world/EnterableBuildings';
 import { getDistrictAtWorld } from '../world/WorldDistricts';
 import { WORLD_HEIGHT, WORLD_WIDTH } from '../world/WorldMapScale';
 
@@ -17,6 +18,7 @@ export interface MinimapLandmark {
   districtName: string;
   locked: boolean;
   live: boolean;
+  enterable: boolean;
 }
 
 export function buildMinimapLandmarks(
@@ -41,6 +43,7 @@ function landmarkFromObject(obj: WorldObject, worldW: number, worldH: number): M
     districtName: district?.name ?? 'RugTown',
     locked: obj.interactionType === 'locked',
     live: isInteractionLive(obj),
+    enterable: ENTERABLE_BUILDINGS.some((building) => building.worldObjectId === obj.id),
   };
 }
 

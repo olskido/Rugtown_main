@@ -58,8 +58,8 @@ export function worldToImageY(y: number): number {
   return (y - WORLD_OFFSET_Y) / WORLD_SCALE_Y;
 }
 
-export const CAMERA_ZOOM_DEFAULT = 0.85;
-export const CAMERA_ZOOM_MIN = 0.85;
+export const CAMERA_ZOOM_DEFAULT = 0.78;
+export const CAMERA_ZOOM_MIN = 0.68;
 export const CAMERA_ZOOM_MAX = 1.70;
 export const CAMERA_FOLLOW_LERP = 0.22;
 

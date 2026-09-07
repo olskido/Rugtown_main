@@ -884,6 +884,9 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
 
   /* ── Phase 3 mission tracker + Phase 5 progress HUD ── */
   const [missionState, setMissionState] = useState<MissionRegistryState>(EMPTY_MISSION_STATE);
+  const [missionCardExpanded, setMissionCardExpanded] = useState(false);
+  const [missionCardVisible, setMissionCardVisible] = useState(true);
+  const [missionHudVisible, setMissionHudVisible] = useState(true);
   /* ── Phase 2: hidden quests — server-authoritative discover/complete + Mission HQ panel ── */
   const [hiddenQuestState, setHiddenQuestState] = useState<{
     discoveredIds: string[]; completedIds: string[]; discoveredCount: number; completedCount: number; totalCount: number;
@@ -2633,6 +2636,25 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
     sceneRef.current?.setActiveMissionZone(zoneId ?? null);
   }, [currentLevelDef, missionState.highlightZoneId]);
 
+  const focusActiveMission = useCallback(() => {
+    const zoneId = missionState.highlightZoneId ?? (currentLevelDef?.objectiveType === 'visit_zone'
+      ? String(currentLevelDef.target)
+      : null);
+    if (!zoneId) {
+      showToast('This mission has no map destination yet.');
+      return;
+    }
+    const target = WORLD_OBJECTS.find((object) => object.id === zoneId);
+    if (!target) {
+      showToast('Mission destination is not available on the map yet.');
+      return;
+    }
+    sceneRef.current?.setActiveMissionZone(zoneId);
+    sceneRef.current?.panTo(target.x * worldSize.w, target.y * worldSize.h);
+    setActiveAction(null);
+    setMissionCardVisible(true);
+  }, [currentLevelDef, missionState.highlightZoneId, showToast, worldSize.h, worldSize.w]);
+
   /* ── Phase 5: REP reward on mission completion ────────────────────
      Watches the mirrored mission list. The first time a mission shows as
      completed (and hasn't been rewarded before — the ref is seeded from the
@@ -3561,7 +3583,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
               </div>
             </div>
 
-            {missionState.missions.length > 0 && (
+            {missionCardVisible && missionState.missions.length > 0 && (
               <div className="mission-card">
                 <div className="mission-card__header">
                   <span>
@@ -3573,9 +3595,16 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                       ? 'Complete'
                       : `${missionState.completedCount}/${missionState.totalCount}`}
                   </span>
+                  <button
+                    type="button"
+                    className="mission-card__toggle"
+                    onClick={() => setMissionCardVisible(false)}
+                    aria-label="Close mission card"
+                    title="Close mission card"
+                  >✕</button>
                 </div>
 
-                <div className="mission-card__scroll" data-ui-block-camera>
+                <div className={`mission-card__scroll${missionCardExpanded ? ' mission-card__scroll--expanded' : ''}`} data-ui-block-camera>
                   {missionState.completed ? (
                     <div className="mission-active mission-active--done">
                       <span className="mission-active__label">Campaign complete</span>
@@ -3587,9 +3616,12 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                     {missionState.missions.map(mission => {
                       const isActive = !mission.completed && mission.id === missionState.activeMissionId;
                       return (
-                        <div
+                        <button
                           key={mission.id}
+                          type="button"
                           className={`mission-row${mission.completed ? ' mission-row--done' : ''}${isActive ? ' mission-row--active' : ''}`}
+                          onClick={focusActiveMission}
+                          title="Focus map on this mission"
                         >
                           <span className="mission-row__check" aria-hidden>{mission.completed ? '✓' : '○'}</span>
                           <div className="mission-row__body">
@@ -3606,11 +3638,19 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                             )}
                           </div>
                           <span className="mission-row__reward">+{mission.rewardXp} XP<br />+{mission.rewardRep} REP</span>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  className="mission-card__expand"
+                  onClick={() => setMissionCardExpanded((expanded) => !expanded)}
+                  aria-expanded={missionCardExpanded}
+                >
+                  {missionCardExpanded ? 'Collapse missions' : 'Expand missions'}
+                </button>
               </div>
             )}
 
@@ -4022,6 +4062,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
             open={isMissionHQOpen}
             onClose={() => setActiveAction(null)}
             onToast={showToast}
+            onFocusMission={focusActiveMission}
           />
 
           {/* ──────────────────────────────────────────────────────
@@ -4365,7 +4406,14 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           {/* ──────────────────────────────────────────────────────
               MISSION HUD — always-visible current level + objective
               ────────────────────────────────────────────────────── */}
-          <div className="mission-hud" role="status">
+          {missionHudVisible && <div className="mission-hud" role="status">
+            <button
+              type="button"
+              className="mission-hud__close"
+              onClick={() => setMissionHudVisible(false)}
+              aria-label="Close mission status"
+              title="Close mission status"
+            >✕</button>
             {currentLevelDef ? (
               <div className="mission-hud__inner" key={currentLevel}>
                 <div className="mission-hud__top">
@@ -4390,7 +4438,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
                 <span className="mission-hud__group">All 30 levels complete!</span>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* ──────────────────────────────────────────────────────
               CHAT FAB — always-visible chat toggle, separate from

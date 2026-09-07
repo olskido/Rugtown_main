@@ -188,6 +188,11 @@ export function ExpandedWorldMap({
           ))}
         </div>
 
+        <div className="world-map-legend" aria-label="Map coverage">
+          <span><i className="world-map-legend__building" aria-hidden /> 6 enterable buildings</span>
+          <span><i className="world-map-legend__landmark" aria-hidden /> 20 interactive landmarks</span>
+        </div>
+
         <div
           className="world-map-stage"
           onPointerDown={handlePointerDown}

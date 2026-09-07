@@ -113,6 +113,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    soundManager.setGameActive(pathToRoute(location.pathname) === '/play');
+  }, [location.pathname]);
+
+  useEffect(() => {
     soundManager.preload();
     if (soundManager.isUnlocked()) return;
     const unlock = () => {

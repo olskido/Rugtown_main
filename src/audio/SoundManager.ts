@@ -22,9 +22,9 @@
      event crossfades back. The Meme Market building can optionally pin
      market.mp3 while the player is there.
 
-  Nothing plays before the first user gesture (unlock()), satisfying the
-  browser autoplay policy. Music auto-resumes when a backgrounded tab is
-  returned to.
+  Music attempts autoplay from the first screen and falls back to the first
+  user gesture when the browser blocks it. Effects still require unlock().
+  Music auto-resumes when a backgrounded tab is returned to.
 */
 
 export type SoundChannel = 'music' | 'effects';
@@ -92,7 +92,9 @@ class SoundManager {
   };
 
   private unlocked = false;
+  private musicAutoplayGranted = false;
   private gameReady = false;
+  private gameActive = false;
 
   private ambientArmed = false;
 
@@ -124,7 +126,11 @@ class SoundManager {
     // instantly on the first gesture without over-fetching every track up
     // front (market buffers later, during city's minutes-long playback).
     const d0 = this.decks[0];
-    if (d0 && !d0.src) { d0.src = MUSIC_URLS.city; try { d0.load(); } catch { /* ignore */ } }
+    if (d0 && !d0.src) {
+      d0.src = MUSIC_URLS.city;
+      try { d0.load(); } catch { /* ignore */ }
+      this.attemptMusicAutoplay(d0);
+    }
   }
 
   /** Call once on the first user gesture. Safe to call repeatedly. */
@@ -139,6 +145,7 @@ class SoundManager {
     if (this.musicContext === 'event') this.crossfadeTo('event', true);
     else if (this.musicContext === 'market') this.crossfadeTo('market', true);
     else if (this.gameReady) this.armAmbientStart();
+    else if (this.musicContext === 'ambient') this.armAmbientStart();
   }
 
   /** Call once when the game world has finished loading. Starts ambient music
@@ -162,6 +169,16 @@ class SoundManager {
 
   isMuted(): boolean { return this.muted; }
   isUnlocked(): boolean { return this.unlocked; }
+
+  /** Pause game music outside the game route or while its tab is hidden. */
+  setGameActive(active: boolean) {
+    this.gameActive = active;
+    if (!active || document.hidden) {
+      this.decks.forEach((deck) => deck.pause());
+      return;
+    }
+    this.handlePlaybackRecovery();
+  }
 
   setMuted(muted: boolean) {
     this.muted = muted;
@@ -292,9 +309,13 @@ class SoundManager {
       el.preload = 'auto';
       el.volume = 0;
       el.addEventListener('ended', () => this.handleTrackEnded(i));
+      el.addEventListener('pause', () => this.handleDeckPause(i));
       this.decks.push(el);
     }
     document.addEventListener('visibilitychange', this.handleVisibility);
+    window.addEventListener('focus', this.handlePlaybackRecovery);
+    window.addEventListener('pageshow', this.handlePlaybackRecovery);
+    window.addEventListener('online', this.handlePlaybackRecovery);
   }
 
   /** Ambient (non-looping) tracks fire 'ended' → advance the shuffle.
@@ -305,18 +326,37 @@ class SoundManager {
     }
   }
 
-  /** Pause when the tab is hidden; resume the active deck when it returns
-   *  (browsers throttle/suspend background media). */
+  /** Browsers can suspend media when a tab is backgrounded. Keep the active
+   *  deck playing and retry it whenever the page becomes playable again. */
   private handleVisibility = () => {
-    if (!this.unlocked) return;
-    const deck = this.decks[this.activeDeck];
-    if (!deck) return;
-    if (document.hidden) {
-      deck.pause();
-    } else {
-      deck.play().catch(() => {});
-    }
+    if (!this.gameActive) return;
+    if (document.hidden) this.decks.forEach((deck) => deck.pause());
+    else this.handlePlaybackRecovery();
   };
+
+  private handleDeckPause = (deckIdx: number) => {
+    if ((!this.unlocked && !this.musicAutoplayGranted) || !this.gameActive || deckIdx !== this.activeDeck) return;
+    this.handlePlaybackRecovery();
+  };
+
+  private handlePlaybackRecovery = () => {
+    if ((!this.unlocked && !this.musicAutoplayGranted) || !this.gameActive || document.hidden) return;
+    const deck = this.decks[this.activeDeck];
+    if (!deck || !deck.src || !deck.paused) return;
+    deck.play().catch(() => {});
+  };
+
+  private attemptMusicAutoplay(deck: HTMLAudioElement) {
+    deck.volume = this.effectiveMusicVolume();
+    deck.play().then(() => {
+      this.musicAutoplayGranted = true;
+      this.ambientArmed = true;
+      this.firstAmbient = false;
+      this.lastAmbientTrack = 'city';
+    }).catch(() => {
+      // Browsers that block autoplay will retry from unlock().
+    });
+  }
 
   private startAmbientShuffle() {
     this.musicContext = 'ambient';
@@ -360,7 +400,7 @@ class SoundManager {
    *  play until their context changes, false for ambient tracks that hand
    *  off to the next shuffle entry when they end. */
   private crossfadeTo(track: MusicTrack, loop: boolean) {
-    if (!this.unlocked || this.decks.length < 2) return;
+    if ((!this.unlocked && !this.musicAutoplayGranted) || this.decks.length < 2) return;
     const nextIdx = 1 - this.activeDeck;
     const incoming = this.decks[nextIdx];
 

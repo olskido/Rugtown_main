@@ -20,18 +20,26 @@ export interface MissionHQPanelProps {
   open: boolean;
   onClose: () => void;
   onToast?: (text: string) => void;
+  onFocusMission?: () => void;
 }
 
-function MissionRow({ mission, onClaim, claiming }: {
+function MissionRow({ mission, onClaim, claiming, onFocusMission }: {
   mission: MissionAssignmentView;
   onClaim: (id: string) => void;
   claiming: boolean;
+  onFocusMission?: () => void;
 }) {
   const pct = mission.target > 0 ? Math.min(100, Math.round((mission.progress / mission.target) * 100)) : 0;
   const canClaim = mission.status === 'completed';
   const claimed = mission.status === 'claimed';
   return (
-    <div className={`missionhq-row${claimed ? ' missionhq-row--claimed' : ''}`}>
+    <div
+      className={`missionhq-row${claimed ? ' missionhq-row--claimed' : ''}${onFocusMission ? ' missionhq-row--focusable' : ''}`}
+      onClick={() => onFocusMission?.()}
+      role={onFocusMission ? 'button' : undefined}
+      tabIndex={onFocusMission ? 0 : undefined}
+      onKeyDown={(e) => { if (onFocusMission && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onFocusMission(); } }}
+    >
       <div className="missionhq-row__main">
         <div className="missionhq-row__title">{mission.title}</div>
         <div className="missionhq-row__desc">{mission.description}</div>
@@ -49,7 +57,7 @@ function MissionRow({ mission, onClaim, claiming }: {
         type="button"
         className="missionhq-row__claim"
         disabled={!canClaim || claiming}
-        onClick={() => onClaim(mission.id)}
+        onClick={(e) => { e.stopPropagation(); onClaim(mission.id); }}
       >
         {claimed ? 'Claimed' : canClaim ? (claiming ? 'Claiming…' : 'Claim') : 'In progress'}
       </button>
@@ -57,7 +65,7 @@ function MissionRow({ mission, onClaim, claiming }: {
   );
 }
 
-export function MissionHQPanel({ open, onClose, onToast }: MissionHQPanelProps) {
+export function MissionHQPanel({ open, onClose, onToast, onFocusMission }: MissionHQPanelProps) {
   const [tab, setTab] = useState<Tab>('daily');
   const [, forceRerender] = useState(0);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -128,7 +136,7 @@ export function MissionHQPanel({ open, onClose, onToast }: MissionHQPanelProps) 
           <div className="missionhq-list">
             {daily.length === 0 && <div className="missionhq-empty">No daily missions assigned yet — sign in to receive today's set.</div>}
             {daily.map((m) => (
-              <MissionRow key={m.id} mission={m} onClaim={handleClaim} claiming={claimingId === m.id} />
+              <MissionRow key={m.id} mission={m} onClaim={handleClaim} claiming={claimingId === m.id} onFocusMission={onFocusMission} />
             ))}
           </div>
         )}
@@ -137,7 +145,7 @@ export function MissionHQPanel({ open, onClose, onToast }: MissionHQPanelProps) 
           <div className="missionhq-list">
             {weekly.length === 0 && <div className="missionhq-empty">No weekly missions assigned yet.</div>}
             {weekly.map((m) => (
-              <MissionRow key={m.id} mission={m} onClaim={handleClaim} claiming={claimingId === m.id} />
+              <MissionRow key={m.id} mission={m} onClaim={handleClaim} claiming={claimingId === m.id} onFocusMission={onFocusMission} />
             ))}
           </div>
         )}

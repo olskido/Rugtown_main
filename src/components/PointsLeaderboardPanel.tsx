@@ -239,6 +239,7 @@ export function PointsLeaderboardPanel({
             {playerWalletAddress && (
               <span className="leaderboard-row__wallet" style={{ marginLeft: 8 }}>
                 {walletDisplay(playerWalletAddress)}
+                <WalletCopyButton address={playerWalletAddress} />
               </span>
             )}
           </div>
