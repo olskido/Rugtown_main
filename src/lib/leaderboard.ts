@@ -17,6 +17,9 @@ export interface LeaderboardRow {
   level: number;
   rep: number;
   points: number;
+  /** Phase 17: Robinhood Chain wallet address (null if player has not linked one) */
+  walletAddress: string | null;
+  walletChain: string | null;
 }
 
 export interface MyLeaderboardRank {
@@ -44,12 +47,14 @@ export async function getPointsLeaderboard(
   return rows.map((r) => {
     const o = r as Record<string, unknown>;
     return {
-      rank: Number(o.rank ?? 0),
-      playerId: String(o.playerId ?? ''),
-      username: String(o.username ?? ''),
-      level: Number(o.level ?? 1),
-      rep: Number(o.rep ?? 0),
-      points: Number(o.points ?? 0),
+      rank:          Number(o.rank ?? 0),
+      playerId:      String(o.playerId ?? ''),
+      username:      String(o.username ?? ''),
+      level:         Number(o.level ?? 1),
+      rep:           Number(o.rep ?? 0),
+      points:        Number(o.points ?? 0),
+      walletAddress: (o.walletAddress ?? null) as string | null,
+      walletChain:   (o.walletChain   ?? null) as string | null,
     };
   });
 }

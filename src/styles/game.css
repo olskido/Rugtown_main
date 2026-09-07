@@ -7077,3 +7077,124 @@
   text-align: right;
 }
 
+
+/* ══════════════════════════════════════════════════════════════
+   LEADERBOARD — Phase 17 additions
+   (column headers, wallet cell, period description)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Period subtitle below the panel title */
+.leaderboard-period-desc {
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #6a5a42;
+  text-align: center;
+  padding: 4px 12px 0;
+  margin: 0;
+}
+
+/* Column header row — visually separates rank/player/wallet/score */
+.leaderboard-header-row {
+  display: grid;
+  grid-template-columns: 38px 1fr minmax(60px, 110px) 70px;
+  gap: 4px;
+  padding: 6px 12px 4px;
+  border-bottom: 1px solid rgba(200, 144, 42, 0.14);
+}
+.leaderboard-header-row span {
+  font-family: 'Cinzel', serif;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6a5a42;
+}
+.leaderboard-header-row__wallet,
+.leaderboard-header-row__score { text-align: right; }
+
+/* Extend existing leaderboard-row to match the 4-column grid */
+.leaderboard-row {
+  grid-template-columns: 38px 1fr minmax(60px, 110px) 70px !important;
+}
+
+/* Wallet cell inside a leaderboard row */
+.leaderboard-row__wallet {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 10px;
+  color: #8a7a62;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.leaderboard-row__wallet-mobile {
+  display: none;
+}
+/* On narrow screens, show shortened wallet under the username */
+@media (max-width: 420px) {
+  .leaderboard-header-row { grid-template-columns: 34px 1fr 60px; }
+  .leaderboard-header-row__wallet { display: none; }
+  .leaderboard-row        { grid-template-columns: 34px 1fr 60px !important; }
+  .leaderboard-row__wallet { display: none; }
+  .leaderboard-row__wallet-mobile {
+    display: block;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 9px;
+    color: #8a7a62;
+    letter-spacing: 0.02em;
+  }
+}
+
+/* ── Wallet copy button inside a leaderboard row ────────────────
+   Small inline button next to the shortened wallet. Copies the
+   FULL address to the clipboard on click. Only rendered when the
+   row has a wallet linked. Long-press / click does not navigate. */
+.leaderboard-row__wallet-copy {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  padding: 0;
+  font-size: 9px;
+  line-height: 1;
+  color: #8a7a62;
+  background: transparent;
+  border: 1px solid rgba(200, 144, 42, 0.2);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.13s, border-color 0.13s, background 0.13s;
+  vertical-align: middle;
+}
+
+.leaderboard-row__wallet-copy:hover {
+  color: #e8b84b;
+  border-color: rgba(200, 144, 42, 0.5);
+  background: rgba(200, 144, 42, 0.08);
+}
+
+.leaderboard-row__wallet-copy--copied {
+  color: #6dcc8a;
+  border-color: rgba(109, 204, 138, 0.45);
+  background: rgba(109, 204, 138, 0.08);
+}
+
+/* Mobile: the shortened wallet moves under the username; the copy
+   button rides inline next to it. */
+@media (max-width: 420px) {
+  .leaderboard-row__wallet-mobile {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .leaderboard-row__wallet-mobile .leaderboard-row__wallet-copy {
+    margin-left: 0;
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
+  }
+}

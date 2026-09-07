@@ -55,40 +55,84 @@ export function UsernameOnboardingPage({ onComplete }: UsernameOnboardingPagePro
   }, [username, validateLocal, onComplete]);
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <h1 className="auth-title">Choose Your Username</h1>
-        <p className="auth-sub">This is your permanent RugTown handle. Your account login restores it automatically.</p>
-
-        <form onSubmit={(e) => void handleSubmit(e)}>
-          <label className="auth-label" htmlFor="rugtown-username">Username</label>
-          <input
-            id="rugtown-username"
-            className="auth-input"
-            value={username}
-            onChange={(e) => {
-              setUsername(e.target.value);
-              setStatus('idle');
-              setError(null);
-            }}
-            onBlur={() => void handleBlur()}
-            maxLength={16}
-            autoComplete="off"
-            autoFocus
-          />
-          {status === 'available' && <p className="auth-hint auth-hint--ok">Username available</p>}
-          {status === 'checking' && <p className="auth-hint">Checking…</p>}
-          {error && <p className="auth-error" role="alert">{error}</p>}
-
-          <button
-            type="submit"
-            className="auth-submit"
-            disabled={status === 'saving' || status === 'checking'}
-          >
-            {status === 'saving' ? 'Saving…' : 'Continue to RugTown'}
-          </button>
-        </form>
+    <div className="landing auth-page landing--mounted screen-enter">
+      <div className="landing__bg" aria-hidden>
+        <div className="landing__bg-city" />
+        <div className="landing__vignette-warm" />
+        <div className="landing__overlay" />
       </div>
+
+      <main className="auth-page__content">
+        <div className="landing__card auth-page__card" role="main">
+          <div className="card__top-ornament" aria-hidden>
+            <div className="card__top-ornament-line" />
+          </div>
+          <span className="card__corner card__corner--tl" aria-hidden>◆</span>
+          <span className="card__corner card__corner--tr" aria-hidden>◆</span>
+          <span className="card__corner card__corner--bl" aria-hidden>◆</span>
+          <span className="card__corner card__corner--br" aria-hidden>◆</span>
+
+          <div className="card__inner auth-page__inner">
+            <div className="auth-page__header">
+              <div className="auth-page__logo">RUGTOWN</div>
+              <p className="auth-page__subtitle">
+                Step 2 of 3 · Choose Username
+              </p>
+            </div>
+
+            <p className="wallet-onboard__hint">
+              This is your permanent RugTown handle. Your account restores it automatically.
+            </p>
+
+            {error && (
+              <p className="auth-feedback auth-feedback--error" role="alert">{error}</p>
+            )}
+            {status === 'available' && (
+              <p className="auth-feedback auth-feedback--notice" role="status">Username available</p>
+            )}
+            {status === 'checking' && (
+              <p className="auth-feedback auth-feedback--notice" role="status">Checking…</p>
+            )}
+
+            <form onSubmit={(e) => void handleSubmit(e)}>
+              <label className="wallet-onboard__label" htmlFor="rugtown-username">
+                Username
+              </label>
+              <input
+                id="rugtown-username"
+                className="guest__input auth-input"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setStatus('idle');
+                  setError(null);
+                }}
+                onBlur={() => void handleBlur()}
+                maxLength={16}
+                autoComplete="off"
+                autoFocus
+                spellCheck={false}
+                aria-label="RugTown username"
+              />
+              <button
+                type="submit"
+                className="btn btn--primary auth-btn-submit"
+                disabled={status === 'saving' || status === 'checking'}
+                aria-busy={status === 'saving'}
+              >
+                <span className="btn__shimmer" aria-hidden />
+                <span className="btn__label">
+                  {status === 'saving' ? 'Saving…' : 'Continue'}
+                </span>
+              </button>
+            </form>
+          </div>
+
+          <div className="card__bottom-ornament" aria-hidden>
+            <div className="card__top-ornament-line" />
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

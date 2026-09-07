@@ -16,6 +16,7 @@ export type RugTownRoute =
   | '/auth'
   | '/wallet'
   | '/onboarding/username'
+  | '/onboarding/wallet'
   | '/character'
   | '/play';
 

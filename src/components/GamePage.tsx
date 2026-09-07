@@ -4013,6 +4013,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
             open={isLeaderboardOpen}
             onClose={() => setActiveAction(null)}
             playerName={playerName ?? ''}
+            playerWalletAddress={walletAddress}
             isGuest={!userId}
           />
 
@@ -4887,6 +4888,8 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
           progression={progression}
           username={playerName || 'DegenExplorer'}
           holderTier={holderTier}
+          walletAddress={walletAddress}
+          walletChain={walletAddress ? 'robinhood' : null}
           onEquipTitle={(id) => progressionService.equipTitle(id)}
           onSignOut={onLogout}
         />

@@ -210,6 +210,10 @@ export interface DbRpcMap {
     Args: { p_username: string };
     Returns: { ok: boolean; username?: string; error?: string };
   };
+  save_wallet_address: {
+    Args: { p_wallet_address: string; p_wallet_chain?: string };
+    Returns: { ok: boolean; walletAddress?: string; walletChain?: string; error?: string; message?: string };
+  };
   get_guild_state: {
     Args: Record<string, never>;
     Returns: unknown;
@@ -315,7 +319,12 @@ export interface DbRpcMap {
     Args: { p_period: 'daily' | 'weekly' | 'all_time'; p_limit?: number; p_offset?: number };
     Returns: {
       period: string; limit: number; offset: number;
-      rows: Array<{ rank: number; playerId: string; username: string; level: number; rep: number; points: number }>;
+      rows: Array<{
+        rank: number; playerId: string; username: string;
+        level: number; rep: number; points: number;
+        /** Phase 17 */
+        walletAddress: string | null; walletChain: string | null;
+      }>;
     };
   };
   get_my_leaderboard_rank: {
