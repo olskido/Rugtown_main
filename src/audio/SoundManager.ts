@@ -92,15 +92,9 @@ class SoundManager {
   };
 
   private unlocked = false;
+  private gameReady = false;
 
-  /** Timestamp (performance.now()) the game world finished loading, set via
-   *  notifyGameReady(). Used only to time the initial ambient-music start —
-   *  playing music the instant a user's first click/tap unlocks audio felt
-   *  abrupt right as the world was still appearing. Null until the game
-   *  signals it's ready. */
-  private gameReadyAt: number | null = null;
   private ambientArmed = false;
-  private static readonly AMBIENT_START_DELAY_MS = 3000;
 
   /* ── Music decks (two <audio> elements we crossfade between) ── */
   private decks: HTMLAudioElement[] = [];
@@ -141,39 +135,29 @@ class SoundManager {
     this.ctx?.resume().catch(() => {});
     this.initMusic();
     // Honour whatever higher-priority context was requested before the
-    // gesture landed (a live event or standing at the market) -- those
-    // start immediately, same as before. The default ambient case is the
-    // only one that gets the delayed start (see armAmbientStart below).
+    // gesture landed (a live event or standing at the market).
     if (this.musicContext === 'event') this.crossfadeTo('event', true);
     else if (this.musicContext === 'market') this.crossfadeTo('market', true);
-    else this.armAmbientStart();
+    else if (this.gameReady) this.armAmbientStart();
   }
 
-  /** Call once when the game world has finished loading. Only affects the
-   *  timing of the very first ambient-music start (see AMBIENT_START_DELAY_MS
-   *  above) -- has no effect on event/market overrides, which always play
-   *  immediately when requested. Safe to call more than once. */
+  /** Call once when the game world has finished loading. Starts ambient music
+   *  immediately when the browser has already granted audio playback. Safe
+   *  to call more than once. */
   notifyGameReady() {
-    if (this.gameReadyAt != null) return;
-    this.gameReadyAt = performance.now();
-    // If the player already unlocked audio (e.g. clicked something on the
-    // homepage) before the world finished loading, arm the delayed start
-    // now that we actually know when "loaded" happened.
+    if (this.gameReady) return;
+    this.gameReady = true;
+    // If the player already unlocked audio before the world finished loading,
+    // start the first ambient track as soon as the game is ready.
     if (this.unlocked && this.musicContext === 'ambient') this.armAmbientStart();
   }
 
-  /** Starts the ambient shuffle ~AMBIENT_START_DELAY_MS after the game
-   *  finished loading (or after this fires, if the game hasn't reported
-   *  ready yet -- e.g. a homepage click before the world exists). Idempotent. */
+  /** Starts the ambient shuffle immediately once audio is unlocked. Idempotent. */
   private armAmbientStart() {
     if (this.ambientArmed) return;
     this.ambientArmed = true;
-    const elapsed = this.gameReadyAt != null ? performance.now() - this.gameReadyAt : 0;
-    const wait = Math.max(0, SoundManager.AMBIENT_START_DELAY_MS - elapsed);
-    setTimeout(() => {
-      // Only start ambient if nothing higher-priority took over meanwhile.
-      if (this.musicContext === 'ambient') this.startAmbientShuffle();
-    }, wait);
+    // Only start ambient if nothing higher-priority took over meanwhile.
+    if (this.musicContext === 'ambient') this.startAmbientShuffle();
   }
 
   isMuted(): boolean { return this.muted; }

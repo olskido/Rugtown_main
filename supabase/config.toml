@@ -1,0 +1,6 @@
+# Supabase CLI project configuration.
+# Recovery is intentionally unauthenticated: the recovery code is the
+# credential used to mint a session on a new device.
+
+[functions.redeem-recovery-code]
+verify_jwt = false

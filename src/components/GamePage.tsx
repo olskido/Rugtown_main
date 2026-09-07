@@ -1426,8 +1426,7 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
         if (cancelled) return;
         sceneRef.current = scene;
         setReady(true);
-        // Marks "loaded" for the music system's ~3s delayed ambient start
-        // (soundManager.ts) -- doesn't play anything itself.
+        // Starts the ambient music immediately once the game world is ready.
         soundManager.notifyGameReady();
         setWorldSize(scene.getWorldSize());
 
