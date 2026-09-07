@@ -87,7 +87,8 @@ export class InteriorScene extends Phaser.Scene {
     hydrateCharacterRegistryFromScene(this);
     this.cameras.main.setBackgroundColor('#05080c');
     this.cameras.main.setBounds(0, 0, ROOM_W, ROOM_H);
-    this.cameras.main.setZoom(1);
+    this.fitInteriorCamera();
+    this.scale.on('resize', this.fitInteriorCamera, this);
 
     this.drawRoom();
     this.setupInput();
@@ -183,6 +184,7 @@ export class InteriorScene extends Phaser.Scene {
   }
 
   shutdownInterior() {
+    this.scale.off('resize', this.fitInteriorCamera, this);
     this.registry.set('interiorState', { active: false, buildingId: null, displayName: null });
     this.registry.set('nearInteriorPrompt', null);
   }
@@ -207,6 +209,19 @@ export class InteriorScene extends Phaser.Scene {
     this.appearance = decodeCharacterAppearance(appearance, assetExists);
     this.bitmapPlayer?.setAppearance(this.appearance);
     if (this.bitmapPlayer) this.drawPlayer();
+  }
+
+  private fitInteriorCamera() {
+    const camera = this.cameras.main;
+    const viewportWidth = Math.max(1, this.scale.width);
+    const viewportHeight = Math.max(1, this.scale.height);
+    const fitZoom = Math.min(
+      viewportWidth / ROOM_W,
+      viewportHeight / ROOM_H,
+    ) * 0.94;
+    const zoom = Phaser.Math.Clamp(fitZoom, 0.42, 1);
+    camera.setZoom(zoom);
+    camera.centerOn(ROOM_W / 2, ROOM_H / 2);
   }
 
   showPlayerSpeech(text: string, duration = 3000) {
