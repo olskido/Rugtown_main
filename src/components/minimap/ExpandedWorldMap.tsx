@@ -2,7 +2,7 @@
  * ExpandedWorldMap.tsx — Phase 10C full-world map modal with pan/zoom/filters.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   DEFAULT_LANDMARKS,
   hitTestLandmark,
@@ -56,12 +56,7 @@ export function ExpandedWorldMap({
   const [selected, setSelected] = useState<MinimapLandmark | null>(null);
   const [waypoint, setWaypoint] = useState<{ x: number; y: number } | null>(null);
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
-  const [panX, setPanX] = useState(0);
-  const [panY, setPanY] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
-  const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
-  const dragMovedRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -81,8 +76,6 @@ export function ExpandedWorldMap({
   };
 
   const centerOnPlayer = useCallback(() => {
-    setPanX(0);
-    setPanY(0);
     setZoom(1);
     onCenterPlayer?.();
   }, [onCenterPlayer]);
@@ -91,58 +84,23 @@ export function ExpandedWorldMap({
     if (!missionLandmarkId) return;
     const lm = DEFAULT_LANDMARKS.find((l) => l.id === missionLandmarkId);
     if (lm) setSelected(lm);
-    setPanX(0);
-    setPanY(0);
-    setZoom(1.15);
   }, [missionLandmarkId]);
 
   const handleMapClick = (mx: number, my: number, fit: MapFitRect) => {
-    if (dragMovedRef.current) {
-      dragMovedRef.current = false;
-      return;
-    }
     if (filters.realPlayers && onSelectRemote) {
-      const remote = hitTestRemote(mx, my, fit, remotes, 'expanded', panX, panY, zoom, 14);
+      const remote = hitTestRemote(mx, my, fit, remotes, 'expanded', 0, 0, zoom, 14);
       if (remote) {
         onSelectRemote(remote);
         return;
       }
     }
-    const hit = hitTestLandmark(mx, my, fit, DEFAULT_LANDMARKS, 'expanded', panX, panY, zoom, 12);
+    const hit = hitTestLandmark(mx, my, fit, DEFAULT_LANDMARKS, 'expanded', 0, 0, zoom, 12);
     if (hit) {
       setSelected(hit);
       return;
     }
-    const world = resolveMapClickWorld(mx, my, fit, 'expanded', panX, panY, zoom);
+    const world = resolveMapClickWorld(mx, my, fit, 'expanded', 0, 0, zoom);
     if (world) setWaypoint(world);
-  };
-
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest('button, input, label')) return;
-    dragMovedRef.current = false;
-    dragRef.current = { sx: e.clientX, sy: e.clientY, px: panX, py: panY };
-    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-  };
-
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (dragRef.current) {
-      const d = dragRef.current;
-      const dx = e.clientX - d.sx;
-      const dy = e.clientY - d.sy;
-      if (Math.hypot(dx, dy) > 6) dragMovedRef.current = true;
-      setPanX(d.px + dx);
-      setPanY(d.py + dy);
-    }
-  };
-
-  const handlePointerUp = () => {
-    dragRef.current = null;
-  };
-
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const dir = e.deltaY > 0 ? -1 : 1;
-    setZoom((z) => Math.min(2.5, Math.max(0.85, z + dir * 0.08)));
   };
 
   if (!open) return null;
@@ -195,11 +153,6 @@ export function ExpandedWorldMap({
 
         <div
           className="world-map-stage"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onWheel={handleWheel}
         >
           <WorldMapCanvas
             className="world-map-stage__canvas"
@@ -211,11 +164,11 @@ export function ExpandedWorldMap({
             filters={filters}
             selectedLandmarkId={selected?.id ?? null}
             waypoint={waypoint}
-            expandedPanX={panX}
-            expandedPanY={panY}
+            expandedPanX={0}
+            expandedPanY={0}
             expandedZoom={zoom}
-            showLandmarkLabels
-            showDistrictNames={filters.districtNames}
+            showLandmarkLabels={false}
+            showDistrictNames={false}
             interactive
             ariaLabel="Expanded world map"
             onClick={handleMapClick}
@@ -224,7 +177,7 @@ export function ExpandedWorldMap({
                 setHover(null);
                 return;
               }
-              const w = resolveMapClickWorld(mx, my, fit, 'expanded', panX, panY, zoom);
+              const w = resolveMapClickWorld(mx, my, fit, 'expanded', 0, 0, zoom);
               setHover(w);
             }}
             onDebugFrame={({ fit, playerMapX, playerMapY, viewport }) => {
@@ -271,7 +224,7 @@ export function ExpandedWorldMap({
           </div>
         )}
 
-        <p className="world-map-hint">Drag to pan · Scroll to zoom · Click player or landmark to inspect · Esc to close</p>
+        <p className="world-map-hint">Icons show buildings and landmarks · Click an icon to inspect · Esc to close</p>
       </div>
     </div>
   );

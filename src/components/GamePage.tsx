@@ -3116,12 +3116,12 @@ export function GamePage({ playerName, appearance, userEmail, userId, initialRep
      timers leak and no stale notification survives across sessions. ── */
   useEffect(() => () => notificationQueue.reset(), []);
 
-  /* ── Reset event alert dismissals whenever the event phase changes.
-     A new phase means genuinely new information worth showing again. ── */
+    /* ── Reset event alert dismissal only for a genuinely new event. A phase
+      update must not resurrect a banner the player already closed. ── */
   useEffect(() => {
     setEventBannerDismissed(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentEvent?.id, eventPhase]);
+    }, [currentEvent?.id]);
 
   /* ── Living City Events (Phase 6) ──
      Self-rescheduling timer (30–60s) — fires a district-themed city event
