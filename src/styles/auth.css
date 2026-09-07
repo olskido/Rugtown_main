@@ -462,3 +462,159 @@
     padding: 8px 6px;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   WALLET ONBOARDING PAGE (WalletOnboardingPage.tsx)
+   Phase 17 — Step 3 of onboarding
+   ══════════════════════════════════════════════════════════════ */
+
+/* Chain badge — green dot + label */
+.wallet-onboard__chain-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #6dcc8a;
+  background: rgba(109, 204, 138, 0.08);
+  border: 1px solid rgba(109, 204, 138, 0.25);
+  border-radius: 20px;
+  padding: 4px 12px;
+  margin: 0 auto 14px;
+}
+
+.wallet-onboard__chain-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6dcc8a;
+  box-shadow: 0 0 6px rgba(109, 204, 138, 0.7);
+  flex-shrink: 0;
+}
+
+/* Hint text under the chain badge */
+.wallet-onboard__hint {
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  color: #8a7a62;
+  text-align: center;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+/* Warning about private key */
+.wallet-onboard__warn {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  color: #b08a3a;
+  background: rgba(200, 144, 42, 0.06);
+  border: 1px solid rgba(200, 144, 42, 0.18);
+  border-radius: 6px;
+  padding: 7px 10px;
+  text-align: center;
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+
+/* Field label */
+.wallet-onboard__label {
+  display: block;
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #c8b89a;
+  margin-bottom: 6px;
+}
+
+/* Input — full width, monospace for address readability */
+.wallet-onboard__input {
+  font-family: 'Courier New', Courier, monospace !important;
+  letter-spacing: 0.03em;
+  width: 100%;
+}
+
+/* Character counter hint */
+.wallet-onboard__char-hint {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  color: #5a5040;
+  margin: 4px 0 14px;
+  text-align: right;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WALLET DISPLAY — profile panel + leaderboard
+   ══════════════════════════════════════════════════════════════ */
+
+/* Profile panel wallet row */
+.profile-wallet-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid rgba(232, 184, 75, 0.08);
+  border-bottom: 1px solid rgba(232, 184, 75, 0.08);
+  margin: 4px 0 12px;
+}
+
+.profile-wallet-block__addr {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: #c8b89a;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-wallet-block__chain {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  color: #6dcc8a;
+  background: rgba(109, 204, 138, 0.08);
+  border: 1px solid rgba(109, 204, 138, 0.22);
+  border-radius: 12px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.profile-wallet-block__copy {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: #e8b84b;
+  background: none;
+  border: 1px solid rgba(232, 184, 75, 0.35);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.profile-wallet-block__copy:hover {
+  background: rgba(232, 184, 75, 0.12);
+}
+.profile-wallet-block__copy--copied {
+  color: #6dcc8a;
+  border-color: rgba(109, 204, 138, 0.35);
+}
+
+/* Leaderboard wallet cell */
+.leaderboard-row__wallet {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px;
+  color: #8a7a62;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+@media (max-width: 480px) {
+  .leaderboard-row__wallet { display: none; }
+}

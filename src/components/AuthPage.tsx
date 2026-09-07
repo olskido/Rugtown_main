@@ -44,7 +44,7 @@ interface AuthPageProps {
   /** Error from a failed `/auth/callback` exchange. Kept for prop-shape
    *  compatibility; nothing in this flow currently produces one. */
   initialError?: string | null;
-  /** Logged-in user proceeds to nickname / character creator. */
+  /** Logged-in user proceeds to wallet onboarding or the game. */
   onContinue: () => void;
   /** Guest path — clears account session and opens character creator. */
   onGuest: () => void;
@@ -228,7 +228,7 @@ export function AuthPage({
                   disabled={loading}
                 >
                   <span className="btn__shimmer" aria-hidden />
-                  <span className="btn__label">Continue to Character Creator</span>
+                  <span className="btn__label">Continue</span>
                 </button>
                 <button
                   className="btn btn--ghost auth-btn-switch"

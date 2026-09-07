@@ -6,6 +6,7 @@ import './styles/game.css';
 import './styles/auth.css';
 import { LandingPage } from './components/LandingPage';
 import { UsernameOnboardingPage } from './components/UsernameOnboardingPage';
+import { WalletOnboardingPage } from './components/WalletOnboardingPage';
 import { AuthPage } from './components/AuthPage';
 // Lazy-loaded: both pull in Phaser + the full character-rendering pipeline
 // (by far the largest chunk in the app). Loading them eagerly meant every
@@ -23,6 +24,7 @@ import {
   fetchInventoryItemIds,
   fetchDistrictUnlockIds,
   saveUsername,
+  createRugtownProfile,
   getRugtownProfileState,
   type AuthUserLike,
 } from './lib/profile';
@@ -59,11 +61,19 @@ interface AuthUser {
 }
 
 function pathToRoute(pathname: string): RugTownRoute {
+  if (pathname.startsWith('/onboarding/wallet'))   return '/onboarding/wallet';
   if (pathname.startsWith('/onboarding/username')) return '/onboarding/username';
   if (pathname.startsWith('/auth')) return '/auth';
   if (pathname.startsWith('/character')) return '/character';
   if (pathname.startsWith('/play')) return '/play';
   return '/';
+}
+
+/** Authenticated flow: email → username → Robinhood wallet → game. No nickname step. */
+function nextAuthenticatedRoute(hasUsername: boolean, hasWallet: boolean): RugTownRoute {
+  if (!hasUsername) return '/onboarding/username';
+  if (!hasWallet) return '/onboarding/wallet';
+  return '/play';
 }
 
 export default function App() {
@@ -78,6 +88,7 @@ export default function App() {
   const [initialOwnedItemIds, setInitialOwnedItemIds] = useState<string[]>([]);
   const [initialDistrictIds, setInitialDistrictIds] = useState<string[]>([]);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const walletAddressRef = useRef<string | null>(null);
   const [onboardingCompleted, setOnboardingCompleted] = useState(true);
   const [restorePosition, setRestorePosition] = useState<{ x: number; y: number } | null>(null);
   const [routeReady, setRouteReady] = useState(false);
@@ -85,6 +96,11 @@ export default function App() {
   const authActionPendingRef = useRef(false);
   const pendingUsernameRef = useRef<string | null>(null);
   const loadedUserIdRef = useRef<string | null>(null);
+  const loadedProfileRef = useRef<{
+    onboardingCompleted: boolean;
+    username: string;
+    walletAddress: string | null;
+  }>({ onboardingCompleted: true, username: '', walletAddress: null });
   const didRestoreRouteRef = useRef(false);
 
   const resetGuestProgress = useCallback(() => {
@@ -133,9 +149,13 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadUserData = async (sUser: AuthUserLike): Promise<{ onboardingCompleted: boolean }> => {
+    const loadUserData = async (sUser: AuthUserLike): Promise<{
+      onboardingCompleted: boolean;
+      username: string;
+      walletAddress: string | null;
+    }> => {
       if (loadedUserIdRef.current === sUser.id) {
-        return { onboardingCompleted };
+        return loadedProfileRef.current;
       }
       loadedUserIdRef.current = sUser.id;
 
@@ -159,7 +179,7 @@ export default function App() {
           fetchInventoryItemIds(sUser.id),
           fetchDistrictUnlockIds(sUser.id),
         ]);
-        if (cancelled) return { onboardingCompleted: true };
+        if (cancelled) return { onboardingCompleted: true, username: '', walletAddress: null };
 
         if (profile?.username) setPlayerName(profile.username);
         else setPlayerName(prev => prev || emailFallback);
@@ -167,6 +187,7 @@ export default function App() {
         const completed = profile?.onboardingCompleted !== false;
         if (profile) {
           setInitialRep(profile.rep);
+          walletAddressRef.current = profile.walletAddress ?? null;
           setWalletAddress(profile.walletAddress ?? null);
           setOnboardingCompleted(completed);
         }
@@ -191,13 +212,19 @@ export default function App() {
         if (badgeIds.length) setInitialBadgeIds(badgeIds);
         if (itemIds.length) setInitialOwnedItemIds(itemIds);
         if (districtIds.length) setInitialDistrictIds(districtIds);
-        return { onboardingCompleted: completed };
+        const result = {
+          onboardingCompleted: completed,
+          username: profile?.username ?? '',
+          walletAddress: profile?.walletAddress ?? null,
+        };
+        loadedProfileRef.current = result;
+        return result;
       } catch {
         if (!cancelled) {
           loadedUserIdRef.current = null;
           setPlayerName(prev => prev || emailFallback);
         }
-        return { onboardingCompleted: true };
+        return { onboardingCompleted: true, username: '', walletAddress: null };
       }
     };
 
@@ -215,7 +242,7 @@ export default function App() {
     const finishHydration = (
       next: AuthHydration,
       uid: string | null,
-      profileOnboardingComplete = true,
+      profile: { username: string; walletAddress: string | null } = { username: '', walletAddress: null },
     ) => {
       if (cancelled) return;
       applyLocalSession(uid);
@@ -226,13 +253,17 @@ export default function App() {
         const session = loadRugTownSession(uid);
         const urlRoute = pathToRoute(location.pathname);
 
-        if (
-          next === 'authenticated'
-          && !profileOnboardingComplete
-          && urlRoute !== '/onboarding/username'
-          && urlRoute !== '/wallet'
-        ) {
-          navigate('/onboarding/username', { replace: true });
+        if (next === 'authenticated') {
+          const dest = nextAuthenticatedRoute(!!profile.username, !!profile.walletAddress);
+          const onOnboarding =
+            urlRoute === '/onboarding/username' || urlRoute === '/onboarding/wallet';
+          if (dest !== '/play' && !onOnboarding) {
+            navigate(dest, { replace: true });
+          } else if (dest === '/play' && (urlRoute === '/character' || urlRoute === '/onboarding/username' || urlRoute === '/onboarding/wallet')) {
+            navigate('/play', { replace: true });
+          } else if (urlRoute === '/play' || (session?.enteredGame && session.route === '/play' && urlRoute === '/')) {
+            navigate(dest === '/play' ? '/play' : dest, { replace: true });
+          }
         } else if (urlRoute === '/play' || (session?.enteredGame && session.route === '/play' && urlRoute === '/')) {
           navigate('/play', { replace: true });
         } else if (urlRoute === '/' && session?.route && session.route !== '/' && session.enteredGame) {
@@ -251,8 +282,11 @@ export default function App() {
       if (cancelled) return;
       if (session?.user) {
         setUser({ id: session.user.id, email: session.user.email ?? null });
-        void loadUserData(session.user).then(({ onboardingCompleted: completed }) => {
-          finishHydration('authenticated', session.user.id, completed);
+        void loadUserData(session.user).then((loaded) => {
+          finishHydration('authenticated', session.user.id, {
+            username: loaded.username,
+            walletAddress: loaded.walletAddress,
+          });
         });
       } else {
         finishHydration('guest', null);
@@ -269,7 +303,7 @@ export default function App() {
           const sUser = session.user;
           setUser({ id: sUser.id, email: sUser.email ?? null });
           setAuthHydration('authenticated');
-          void loadUserData(sUser).then(async () => {
+          void loadUserData(sUser).then(async (loaded) => {
             if (cancelled) return;
             if (!authActionPendingRef.current) return;
             authActionPendingRef.current = false;
@@ -277,20 +311,30 @@ export default function App() {
             const chosenUsername = pendingUsernameRef.current;
             pendingUsernameRef.current = null;
             if (chosenUsername) {
-              await saveUsername(sUser.id, chosenUsername).catch(() => {});
+              const created = await createRugtownProfile(chosenUsername);
+              if (!created.ok) {
+                await saveUsername(sUser.id, chosenUsername).catch(() => {});
+              }
               if (!cancelled) setPlayerName(chosenUsername);
             }
 
             if (!cancelled) {
-              saveRugTownSession({ route: '/character' }, sUser.id);
-              navigate('/character');
+              const dest = nextAuthenticatedRoute(
+                !!(chosenUsername || loaded.username),
+                !!(walletAddressRef.current || loaded.walletAddress),
+              );
+              saveRugTownSession({ route: dest, playerName: chosenUsername || loaded.username }, sUser.id);
+              navigate(dest);
             }
           });
         }
 
         if (event === 'SIGNED_OUT') {
           loadedUserIdRef.current = null;
+          loadedProfileRef.current = { onboardingCompleted: true, username: '', walletAddress: null };
           pendingUsernameRef.current = null;
+          walletAddressRef.current = null;
+          setWalletAddress(null);
           setUser(null);
           resetGuestProgress();
           setAuthHydration('guest');
@@ -306,8 +350,8 @@ export default function App() {
   }, [resetGuestProgress, navigate]);
 
   const handleEnterRugtown = useCallback(() => {
-    if (user && playerName) {
-      navigate('/play');
+    if (user) {
+      navigate(nextAuthenticatedRoute(!!playerName, !!(walletAddressRef.current || walletAddress)));
       return;
     }
     if (isSupabaseConfigured) {
@@ -315,29 +359,43 @@ export default function App() {
       return;
     }
     navigate('/character');
-  }, [navigate, user, playerName]);
+  }, [navigate, user, playerName, walletAddress]);
 
   const handleUsernameComplete = useCallback(
     (username: string) => {
       setPlayerName(username);
+      // Phase 17: username step sets onboarding_completed = false on the server
+      // (wallet step follows). Route to wallet onboarding; the wallet page will
+      // advance to /character when done (or when the player skips).
+      setOnboardingCompleted(false);
+      saveRugTownSession({ route: '/onboarding/wallet', playerName: username }, user?.id ?? null);
+      navigate('/onboarding/wallet');
+    },
+    [navigate, user?.id],
+  );
+
+  const handleWalletComplete = useCallback(
+    (savedWalletAddress: string) => {
+      const addr = savedWalletAddress.trim();
+      walletAddressRef.current = addr || walletAddressRef.current;
+      if (addr) setWalletAddress(addr);
       setOnboardingCompleted(true);
-      saveRugTownSession({ route: '/character', playerName: username }, user?.id ?? null);
-      navigate('/character');
+      loadedProfileRef.current = {
+        ...loadedProfileRef.current,
+        walletAddress: addr || loadedProfileRef.current.walletAddress,
+        onboardingCompleted: true,
+      };
+      saveRugTownSession({ route: '/play', enteredGame: true }, user?.id ?? null);
+      navigate('/play');
     },
     [navigate, user?.id],
   );
 
   const handleAuthContinue = useCallback(() => {
-    // Defense in depth: a signed-in user can reach /auth's "Continue" button
-    // directly (browser back, bookmark). onboardingCompleted is authoritative
-    // server state by this point
-    // (hydration has already completed, since this route only renders once
-    // routeReady is true), so honour it here too -- never send an
-    // incomplete profile to the game.
-    const dest = onboardingCompleted ? '/character' : '/onboarding/username';
-    if (dest === '/character') saveRugTownSession({ route: '/character' }, user?.id ?? null);
+    const dest = nextAuthenticatedRoute(!!playerName, !!(walletAddressRef.current || walletAddress));
+    saveRugTownSession({ route: dest }, user?.id ?? null);
     navigate(dest);
-  }, [navigate, user?.id, onboardingCompleted]);
+  }, [navigate, user?.id, playerName, walletAddress]);
 
   const handleAuthSignInAttempt = useCallback(() => {
     authActionPendingRef.current = true;
@@ -405,6 +463,8 @@ export default function App() {
     progressionService.flushServerSync();
     await supabase?.auth.signOut();
     setUser(null);
+    walletAddressRef.current = null;
+    setWalletAddress(null);
     resetGuestProgress();
     setAuthHydration('guest');
     saveRugTownSession({ route: '/', enteredGame: false }, null);
@@ -456,9 +516,30 @@ export default function App() {
       <Route path="/wallet" element={<Navigate to="/auth" replace />} />
       <Route
         path="/onboarding/username"
-        element={(
-          <UsernameOnboardingPage onComplete={handleUsernameComplete} />
-        )}
+        element={
+          user ? (
+            <UsernameOnboardingPage onComplete={handleUsernameComplete} />
+          ) : (
+            <Navigate to="/auth" replace />
+          )
+        }
+      />
+      <Route
+        path="/onboarding/wallet"
+        element={
+          user ? (
+            playerName ? (
+              <WalletOnboardingPage
+                username={playerName}
+                onComplete={(saved) => handleWalletComplete(saved)}
+              />
+            ) : (
+              <Navigate to="/onboarding/username" replace />
+            )
+          ) : (
+            <Navigate to="/auth" replace />
+          )
+        }
       />
       <Route
         path="/auth"
@@ -476,16 +557,23 @@ export default function App() {
       />
       <Route
         path="/character"
-        element={(
-          <OutfitSelectPage
-            playerName={playerName}
-            onSelect={handleNameSelect}
-          />
-        )}
+        element={
+          user ? (
+            <Navigate to={nextAuthenticatedRoute(!!playerName, !!(walletAddressRef.current || walletAddress))} replace />
+          ) : (
+            <OutfitSelectPage
+              playerName={playerName}
+              onSelect={handleNameSelect}
+            />
+          )
+        }
       />
       <Route
         path="/play"
-        element={(
+        element={
+          user && !(walletAddressRef.current || walletAddress) ? (
+            <Navigate to={nextAuthenticatedRoute(!!playerName, false)} replace />
+          ) : (
           <GamePage
             playerName={playerName}
             appearance={getCanonicalPlayerAppearance()}
@@ -499,7 +587,8 @@ export default function App() {
             walletAddress={walletAddress}
             onLogout={handleLogout}
           />
-        )}
+          )
+        }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

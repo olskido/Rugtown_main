@@ -1,8 +1,8 @@
 /**
- * PlayerProfilePanel.tsx — full identity / progression profile (Phase 10F).
+ * PlayerProfilePanel.tsx — full identity / progression profile (Phase 10F+17).
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PlayerProgression } from '../game/progression/types';
 import { ACHIEVEMENT_CATALOG } from '../game/progression/AchievementCatalog';
 import { rankDisplayName } from '../game/progression/RankLadder';
@@ -10,6 +10,7 @@ import { shouldShowSeasonUi } from '../game/progression/SeasonFoundation';
 import { TITLE_CATALOG, titleDisplayName } from '../game/progression/TitleCatalog';
 import { levelProgressPercent } from '../game/progression/XpCurve';
 import { generateMyRecoveryCode, hasMyRecoveryCode } from '../lib/recoveryCode';
+import { shortenAddress, chainLabel, saveWalletAddress, validateRobinhoodAddress, ROBINHOOD_CHAIN_ID } from '../lib/wallet';
 
 export interface PlayerProfilePanelProps {
   open: boolean;
@@ -17,6 +18,10 @@ export interface PlayerProfilePanelProps {
   progression: PlayerProgression;
   username: string;
   holderTier: string;
+  /** Phase 17: linked Robinhood Chain wallet address (null if not yet linked) */
+  walletAddress?: string | null;
+  /** Phase 17: chain identifier, e.g. 'robinhood' */
+  walletChain?: string | null;
   online?: boolean;
   onEquipTitle: (titleId: string) => void;
   /** Signs out (guest or authenticated) and returns to the homepage.
@@ -30,6 +35,8 @@ export function PlayerProfilePanel({
   progression,
   username,
   holderTier,
+  walletAddress,
+  walletChain,
   online = true,
   onEquipTitle,
   onSignOut,
@@ -41,6 +48,8 @@ export function PlayerProfilePanel({
     progression={progression}
     username={username}
     holderTier={holderTier}
+    walletAddress={walletAddress}
+    walletChain={walletChain}
     online={online}
     onEquipTitle={onEquipTitle}
     onSignOut={onSignOut}
@@ -52,6 +61,8 @@ function PlayerProfilePanelInner({
   progression,
   username,
   holderTier,
+  walletAddress,
+  walletChain,
   online,
   onEquipTitle,
   onSignOut,
@@ -69,6 +80,16 @@ function PlayerProfilePanelInner({
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [recoveryCopied, setRecoveryCopied] = useState(false);
+
+  // Phase 17: wallet copy + in-panel wallet editing
+  const [walletCopied, setWalletCopied] = useState(false);
+  const [editingWallet, setEditingWallet] = useState(false);
+  const [walletInput, setWalletInput] = useState('');
+  const [walletSaving, setWalletSaving] = useState(false);
+  const [walletSaveError, setWalletSaveError] = useState<string | null>(null);
+  const [localWalletAddress, setLocalWalletAddress] = useState<string | null>(walletAddress ?? null);
+  const [localWalletChain, setLocalWalletChain] = useState<string | null>(walletChain ?? null);
+  const walletInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (progression.isGuest) return;
@@ -103,6 +124,47 @@ function PlayerProfilePanelInner({
       // Clipboard API unavailable — the code is still selectable on screen.
     }
   };
+
+  // ── Phase 17: wallet helpers ──────────────────────────────────────────────
+
+  const handleCopyWallet = useCallback(async () => {
+    const addr = localWalletAddress;
+    if (!addr) return;
+    try {
+      await navigator.clipboard.writeText(addr);
+      setWalletCopied(true);
+      setTimeout(() => setWalletCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable — the shortened address is still readable.
+    }
+  }, [localWalletAddress]);
+
+  const handleStartEditWallet = useCallback(() => {
+    setWalletInput(localWalletAddress ?? '');
+    setWalletSaveError(null);
+    setEditingWallet(true);
+    // Focus the input on the next tick after it mounts.
+    setTimeout(() => walletInputRef.current?.focus(), 50);
+  }, [localWalletAddress]);
+
+  const handleSaveWallet = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = walletInput.trim();
+    const localErr = validateRobinhoodAddress(trimmed);
+    if (localErr) { setWalletSaveError(localErr); return; }
+
+    setWalletSaving(true);
+    setWalletSaveError(null);
+    const result = await saveWalletAddress(trimmed, ROBINHOOD_CHAIN_ID);
+    setWalletSaving(false);
+    if (!result.ok) {
+      setWalletSaveError(result.message ?? 'Could not save wallet.');
+      return;
+    }
+    setLocalWalletAddress(result.walletAddress ?? trimmed);
+    setLocalWalletChain(result.walletChain ?? ROBINHOOD_CHAIN_ID);
+    setEditingWallet(false);
+  }, [walletInput]);
 
   return (
     <div
@@ -167,6 +229,116 @@ function PlayerProfilePanelInner({
               {progression.rep.toLocaleString()}
             </span>
           </div>
+
+          {/* Phase 17: Wallet section */}
+          {!progression.isGuest && (
+            <>
+              <h3 className="profile-section-title">Wallet</h3>
+
+              {editingWallet ? (
+                <form
+                  onSubmit={(e) => void handleSaveWallet(e)}
+                  style={{ marginBottom: 12 }}
+                >
+                  <label
+                    className="wallet-onboard__label"
+                    htmlFor="profile-wallet-input"
+                    style={{ marginTop: 0 }}
+                  >
+                    Robinhood Chain Address
+                  </label>
+                  <input
+                    ref={walletInputRef}
+                    id="profile-wallet-input"
+                    className="guest__input auth-input wallet-onboard__input"
+                    type="text"
+                    inputMode="text"
+                    placeholder="0x…"
+                    value={walletInput}
+                    maxLength={42}
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    disabled={walletSaving}
+                    onChange={(e) => {
+                      setWalletInput(e.target.value);
+                      setWalletSaveError(null);
+                    }}
+                    aria-label="Robinhood Chain wallet address"
+                    aria-invalid={!!walletSaveError}
+                  />
+                  {walletSaveError && (
+                    <p className="auth-feedback auth-feedback--error" role="alert" style={{ fontSize: 10, marginTop: 4 }}>
+                      {walletSaveError}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button
+                      type="submit"
+                      className="settings-action-btn"
+                      disabled={walletSaving || walletInput.trim().length === 0}
+                      aria-busy={walletSaving}
+                      style={{ flex: 1 }}
+                    >
+                      {walletSaving ? 'Saving…' : 'Save Wallet'}
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-action-btn"
+                      disabled={walletSaving}
+                      onClick={() => { setEditingWallet(false); setWalletSaveError(null); }}
+                      style={{ flex: 1 }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : localWalletAddress ? (
+                <div className="profile-wallet-block">
+                  <span
+                    className="profile-wallet-block__addr"
+                    title={localWalletAddress}
+                    aria-label={`Wallet address: ${localWalletAddress}`}
+                  >
+                    {shortenAddress(localWalletAddress)}
+                  </span>
+                  <span className="profile-wallet-block__chain">
+                    {chainLabel(localWalletChain)}
+                  </span>
+                  <button
+                    type="button"
+                    className={`profile-wallet-block__copy${walletCopied ? ' profile-wallet-block__copy--copied' : ''}`}
+                    onClick={() => void handleCopyWallet()}
+                    aria-label="Copy full wallet address"
+                    title="Copy full wallet address"
+                  >
+                    {walletCopied ? 'Copied ✓' : 'Copy'}
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    style={{ fontSize: 10, padding: '3px 10px', marginLeft: 'auto' }}
+                    onClick={handleStartEditWallet}
+                  >
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <div style={{ marginBottom: 12 }}>
+                  <p className="profile-empty" style={{ marginBottom: 8 }}>
+                    No wallet linked yet.
+                  </p>
+                  <button
+                    type="button"
+                    className="settings-action-btn"
+                    onClick={handleStartEditWallet}
+                  >
+                    + Add Wallet
+                  </button>
+                </div>
+              )}
+            </>
+          )}
           <div className="whale-alert-row">
             <span className="whale-alert-row__label">Holder Tier</span>
             <span className="whale-alert-row__value">{holderTier}</span>
